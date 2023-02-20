@@ -1,5 +1,7 @@
 #!/bin/sh
 
+mkdir build
+
 download() {
     wget "$1" -O "$2"deps/$(basename "$1")
 }
@@ -8,7 +10,6 @@ download() {
 download "https://raw.githubusercontent.com/floooh/sokol/master/sokol_gfx.h"
 download "https://raw.githubusercontent.com/floooh/sokol/master/sokol_glue.h"
 download "https://raw.githubusercontent.com/floooh/sokol/master/sokol_app.h"
-download "https://raw.githubusercontent.com/floooh/sokol/master/sokol_audio.h"
 
 cd tools
 

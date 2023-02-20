@@ -26,7 +26,7 @@ endif
 
 CC=clang
 SOURCE=$(wildcard src/*.c)
-NAME=sokol
+NAME=perlin
 
 EXE=build/$(NAME)_$(ARCH)$(PROG_EXT)
 ARCH_PATH=./tools/bin/$(ARCH)
