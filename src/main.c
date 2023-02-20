@@ -390,8 +390,10 @@ void frame(void) {
             nk_checkbox_label(ctx, "Apply circular gradient", &tmp.fadeOut);
             nk_tree_pop(ctx);
         }
+#if !defined(__EMSCRIPTEN__) && !defined(EMSCRIPTEN)
         if (nk_button_label(ctx, "Export"))
             ExportPNG();
+#endif
     }
     nk_end(ctx);
     

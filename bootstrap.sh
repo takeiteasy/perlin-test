@@ -1,7 +1,5 @@
 #!/bin/sh
 
-mkdir build
-
 download() {
     wget "https://raw.githubusercontent.com/$1" -O "$2"deps/$(basename "$1")
 }
