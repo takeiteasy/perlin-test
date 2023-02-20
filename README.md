@@ -1,5 +1,17 @@
 # perlin-test
 
+Simple tool to play with Perlin noise in real time.
+
+## Gallery
+
+![Screenshot](/assets/screenshot.png)
+
+## Planned features
+
+- [ ] Display noise onto models
+- [ ] Lua scripting to interact with heightmap
+- [ ] Hot shader reloading to test using noise
+
 ## Dependencies
 
 - [floooh/sokol](https://github.com/floooh/sokol) (zlib/libpng)
