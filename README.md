@@ -1,5 +1,17 @@
 # perlin-test
 
+## Dependencies
+
+- [floooh/sokol](https://github.com/floooh/sokol) (zlib/libpng)
+    - sokol_gfx.h
+    - sokol_app.h
+    - sokol_glue.h
+    - sokol_nuklear.h
+- [Immediate-Mode-UI/Nuklear](https://github.com/Immediate-Mode-UI/Nuklear) (MIT/Public Domain)
+    - nuklear.h
+- [miloyip/svpng](https://github.com/miloyip/svpng) (BSD-3-Clause)
+    - svpng.inc
+
 ## License
 ```
 The MIT License (MIT)

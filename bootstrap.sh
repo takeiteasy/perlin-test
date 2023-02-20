@@ -3,13 +3,16 @@
 mkdir build
 
 download() {
-    wget "$1" -O "$2"deps/$(basename "$1")
+    wget "https://raw.githubusercontent.com/$1" -O "$2"deps/$(basename "$1")
 }
 
 # Download latest header-only dependencies
-download "https://raw.githubusercontent.com/floooh/sokol/master/sokol_gfx.h"
-download "https://raw.githubusercontent.com/floooh/sokol/master/sokol_glue.h"
-download "https://raw.githubusercontent.com/floooh/sokol/master/sokol_app.h"
+download "floooh/sokol/master/sokol_gfx.h"
+download "floooh/sokol/master/sokol_glue.h"
+download "floooh/sokol/master/sokol_app.h"
+download "miloyip/svpng/master/svpng.inc"
+download "Immediate-Mode-UI/Nuklear/master/nuklear.h"
+download "floooh/sokol/master/util/sokol_nuklear.h"
 
 cd tools
 
