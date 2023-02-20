@@ -1,6 +1,6 @@
 # perlin-test
 
-Simple tool to play with Perlin noise in real time.
+Simple tool to play with Perlin noise in real time. To build, first run ```bootstrap.sh``` then run ```make```. The binary will be inside the ```build/``` directory.
 
 ## Gallery
 
@@ -10,7 +10,8 @@ Simple tool to play with Perlin noise in real time.
 
 - [ ] Display noise onto models
 - [ ] Lua scripting to interact with heightmap
-- [ ] Hot shader reloading to test using noise
+- [ ] Hot shader reloading to test noise
+- [ ] Node based editor? (Doubtful)
 
 ## Dependencies
 
