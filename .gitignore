@@ -4,3 +4,7 @@ build/
 *.plist
 .DS_Store
 *.blend1
+*.metallib
+*.metal
+*.dia
+*.air

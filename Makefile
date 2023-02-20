@@ -2,7 +2,6 @@ ifeq ($(OS),Windows_NT)
 	PROG_EXT=.exe
 	CFLAGS=-O2 -DSOKOL_D3D11 -lkernel32 -luser32 -lshell32 -ldxgi -ld3d11 -lole32 -lgdi32
 	ARCH=win32
-	SHDC_FLAGS=hlsl5
 else
 	UNAME:=$(shell uname -s)
 	PROG_EXT=
@@ -14,11 +13,9 @@ else
 		else
 			ARCH=osx
 		endif
-		SHDC_FLAGS=metal_macos
 	else ifeq ($(UNAME),Linux)
 		CFLAGS=-DSOKOL_GLCORE33 -pthread -lGL -ldl -lm -lX11 -lasound -lXi -lXcursor
 		ARCH=linux
-		SHDC_FLAGS=glsl330
 	else
 		$(error OS not supported by this Makefile)
 	endif
@@ -41,13 +38,16 @@ all: app
 SHADER=$(patsubst %.h,%,$@)
 SHADER_OUT=$@
 %.glsl.h: $(SHADERS)
-	$(SHDC_PATH) -i $(SHADER) -o $(SHADER_OUT) -l $(SHDC_FLAGS)
+	$(SHDC_PATH) -i $(SHADER) -o $(SHADER_OUT) -l glsl330:glsl100:glsl300es:hlsl4:metal_macos:wgpu
 	mv $(SHADER_OUT) build/
 
 shaders: $(SHADER_OUTS)
 
 app: shaders
-	$(CC) -Ibuild -Ideps -fenable-matrix $(CFLAGS) $(SOURCE) -o $(EXE)
+	$(CC) -Ibuild -Ideps $(CFLAGS) $(SOURCE) -o $(EXE)
+
+web: shaders
+	emcc -DSOKOL_GLES3 -Ibuild -Ideps $(SOURCE) -sUSE_WEBGL2=1 -o web/$(NAME).js
 
 run: $(EXE)
 	./$(EXE)
