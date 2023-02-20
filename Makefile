@@ -26,6 +26,7 @@ SOURCE=$(wildcard src/*.c)
 NAME=perlin
 
 EXE=build/$(NAME)_$(ARCH)$(PROG_EXT)
+JS=build/$(NAME).js
 ARCH_PATH=./tools/bin/$(ARCH)
 
 SHDC_PATH=$(ARCH_PATH)/sokol-shdc$(PROG_EXT)
@@ -47,7 +48,7 @@ app: shaders
 	$(CC) -Ibuild -Ideps $(CFLAGS) $(SOURCE) -o $(EXE)
 
 web: shaders
-	emcc -DSOKOL_GLES3 -Ibuild -Ideps $(SOURCE) -sUSE_WEBGL2=1 -o web/$(NAME).js
+	emcc -DSOKOL_GLES3 -Ibuild -Ideps $(SOURCE) -sUSE_WEBGL2=1 -o $(JS)
 
 run: $(EXE)
 	./$(EXE)
