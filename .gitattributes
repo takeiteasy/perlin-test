@@ -1,2 +1,2 @@
-*.wasm export-ignore
-*.js export-ignore
+*.wasm linguist-generated
+*.js linguist-generated
