@@ -13,8 +13,20 @@
 #include "sokol_glue.h"
 #include "sokol_nuklear.h"
 #include "default.glsl.h"
-#include <float.h>
-#include "svpng.inc"
+
+#if defined(__EMSCRIPTEN__) || defined(EMSCRIPTEN)
+#define WEB_BUILD 1
+#else
+#define WEB_BUILD 0
+#endif
+
+#if defined(macintosh) || defined(Macintosh) || (defined(__APPLE__) && defined(__MACH__))
+#define PLATFORM_MAC
+#elif defined(_WIN32) || defined(_WIN64) || defined(__WIN32__) || defined(__WINDOWS__)
+#define PLATFORM_WINDOWS
+#elif defined(__gnu_linux__) || defined(__linux__) || defined(__unix__)
+#define PLATFORM_LINUX
+#endif
 
 static const float grad3[][3] = {
     { 1, 1, 0 }, { -1, 1, 0 }, { 1, -1, 0 }, { -1, -1, 0 },
@@ -229,50 +241,8 @@ static struct {
     Vertex vertex[6];
     bool update;
     float zoom;
+    float scrollY;
 } state;
-
-static struct {
-    bool button_down[SAPP_MAX_KEYCODES];
-    bool button_clicked[SAPP_MAX_KEYCODES];
-    bool mouse_down[SAPP_MAX_MOUSEBUTTONS];
-    bool mouse_clicked[SAPP_MAX_MOUSEBUTTONS];
-    Vec2 mouse_pos, last_mouse_pos;
-    Vec2 mouse_scroll_delta, mouse_delta;
-} input;
-
-static void ResetInput(void) {
-    input.mouse_delta = input.mouse_scroll_delta = (Vec2){0};
-    for (int i = 0; i < SAPP_MAX_KEYCODES; i++)
-        if (input.button_clicked[i])
-            input.button_clicked[i] = false;
-    for (int i = 0; i < SAPP_MAX_MOUSEBUTTONS; i++)
-        if (input.mouse_clicked[i])
-            input.mouse_clicked[i] = false;
-}
-
-static bool IsKeyDown(sapp_keycode key) {
-    return input.button_down[key];
-}
-
-static bool IsKeyUp(sapp_keycode key) {
-    return !input.button_down[key];
-}
-
-static bool WasKeyClicked(sapp_keycode key) {
-    return input.button_clicked[key];
-}
-
-static bool IsButtonDown(sapp_mousebutton button) {
-    return input.mouse_down[button];
-}
-
-static bool IsButtonUp(sapp_mousebutton button) {
-    return !input.mouse_down[button];
-}
-
-static bool WasButtonPressed(sapp_mousebutton button) {
-    return input.mouse_clicked[button];
-}
 
 void init(void) {
     sg_setup(&(sg_desc){
@@ -322,31 +292,18 @@ void init(void) {
     state.zoom = 1.f;
 }
 
-#define PHI 1.618033988749895f
-
-#if !defined(MIN)
-#define MIN(a, b) (a < b ? a : b)
-#endif
-#if !defined(MAX)
-#define MAX(a, b) (a > b ? a : b)
-#endif
-#define CLAMP(n, min, max) (MIN(MAX(n, min), max))
-
-#define ToRGB(H) (int)((255 << 24) | ((H) << 16) | ((H) << 8) | (H))
-
-static char* SavePath(void) {
-    static char date[256];
-    date[0] = '\0';
-    time_t raw = time(NULL);
-    struct tm *t = localtime(&raw);
-    strftime(date, 256, "Perlin %G-%m-%d at %H.%M.%S.png", t);
-    return date;
-}
+#if !WEB_BUILD
+#include "svpng.inc"
 
 static void ExportPNG(void) {
+    char path[256];
+    time_t raw = time(NULL);
+    struct tm *t = localtime(&raw);
+    strftime(path, 256, "Perlin %G-%m-%d at %H.%M.%S.png", t);
+    FILE *fp = fopen(path, "wb");
+    
     unsigned char *out = malloc(state.bitmap.w * state.bitmap.h * 3 * sizeof(unsigned char));
     unsigned char *p = out;
-    FILE *fp = fopen(SavePath(), "wb");
     for (int x = 0; x < state.bitmap.w; x++)
         for (int y = 0; y < state.bitmap.h; y++) {
             int c = state.bitmap.buf[y * state.bitmap.w + x];
@@ -358,11 +315,22 @@ static void ExportPNG(void) {
     free(out);
     fclose(fp);
 }
+#endif
+
+#define PHI 1.618033988749895f
+
+#if !defined(MIN)
+#define MIN(a, b) (a < b ? a : b)
+#endif
+#if !defined(MAX)
+#define MAX(a, b) (a > b ? a : b)
+#endif
+#define CLAMP(n, min, max) (MIN(MAX(n, min), max))
 
 void frame(void) {
     float delta = (float)(sapp_frame_duration() * 60.0);
     
-    state.zoom = CLAMP(state.zoom + (input.mouse_scroll_delta.y * delta), .1f, 10.f);
+    state.zoom = CLAMP(state.zoom + (state.scrollY * delta), .1f, 10.f);
     
     struct nk_context *ctx = snk_new_frame();
     Settings tmp;
@@ -390,7 +358,7 @@ void frame(void) {
             nk_checkbox_label(ctx, "Apply circular gradient", &tmp.fadeOut);
             nk_tree_pop(ctx);
         }
-#if !defined(__EMSCRIPTEN__) && !defined(EMSCRIPTEN)
+#if !WEB_BUILD
         if (nk_button_label(ctx, "Export"))
             ExportPNG();
 #endif
@@ -425,7 +393,7 @@ void frame(void) {
             for (int y = 0; y < settings.canvasHeight; y++) {
                 int i = y * settings.canvasWidth + x;
                 unsigned char h = heightmap[i];
-                state.bitmap.buf[i] = ToRGB(h);
+                state.bitmap.buf[i] = (int)((255 << 24) | (h << 16) | (h << 8) | h);
             }
         sg_update_image(state.texture, &(sg_image_data) {
             .subimage[0][0] = {
@@ -437,7 +405,7 @@ void frame(void) {
     }
     
     Vec2 size = {settings.canvasWidth, settings.canvasHeight};
-    Vec2 viewport = {sapp_width(),sapp_height()};
+    Vec2 viewport = {sapp_width(), sapp_height()};
     Vec2 position = (viewport / 2.f) - (size / 2.f);
     Vec2 quad[4] = {
         {position.x, position.y + size.y}, // bottom left
@@ -447,7 +415,7 @@ void frame(void) {
     };
     Vec2 v = (Vec2){2.f,-2.f} / viewport;
     for (int j = 0; j < 4; j++)
-        quad[j] = (v * quad[j] + (Vec2){-1.f,1.f}) * state.zoom;
+        quad[j] = (v * quad[j] + (Vec2){-1.f, 1.f}) * state.zoom;
     static const Vec2 vtexquad[4] = {
         {0.f, 1.f}, // bottom left
         {1.f, 1.f}, // bottom right
@@ -477,37 +445,25 @@ void frame(void) {
     snk_render(sapp_width(), sapp_height());
     sg_end_pass();
     sg_commit();
-    ResetInput();
+    state.scrollY = 0.f;
 }
 
 void event(const sapp_event *e) {
     snk_handle_event(e);
     switch (e->type) {
         case SAPP_EVENTTYPE_KEY_DOWN:
-#if defined(DEBUG)
+#if !WEB_BUILD
+#if defined(PLATFORM_MAC)
             if (e->modifiers & SAPP_MODIFIER_SUPER && e->key_code == SAPP_KEYCODE_W)
                 sapp_quit();
+#else
+            if (e->modifiers & SAPP_MODIFIER_ALT && e->key_code == SAPP_KEYCODE_F4)
+                sapp_quit();
 #endif
-            input.button_down[e->key_code] = true;
-            break;
-        case SAPP_EVENTTYPE_KEY_UP:
-            input.button_down[e->key_code] = false;
-            input.button_clicked[e->key_code] = true;
-            break;
-        case SAPP_EVENTTYPE_MOUSE_DOWN:
-            input.mouse_down[e->mouse_button] = true;
-            break;
-        case SAPP_EVENTTYPE_MOUSE_UP:
-            input.mouse_down[e->mouse_button] = false;
-            input.mouse_clicked[e->mouse_button] = true;
-            break;
-        case SAPP_EVENTTYPE_MOUSE_MOVE:
-            input.last_mouse_pos = input.mouse_pos;
-            input.mouse_pos = (Vec2){e->mouse_x, e->mouse_y};
-            input.mouse_delta = (Vec2){e->mouse_dx, e->mouse_dy};
+#endif
             break;
         case SAPP_EVENTTYPE_MOUSE_SCROLL:
-            input.mouse_scroll_delta = (Vec2){e->scroll_x, e->scroll_y};
+            state.scrollY = e->scroll_y;
             break;
         default:
             break;

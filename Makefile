@@ -27,7 +27,7 @@ NAME=perlin
 
 EXE=build/$(NAME)_$(ARCH)$(PROG_EXT)
 JS=build/$(NAME).js
-ARCH_PATH=./tools/bin/$(ARCH)
+ARCH_PATH=bin/$(ARCH)
 
 SHDC_PATH=$(ARCH_PATH)/sokol-shdc$(PROG_EXT)
 SHADERS=$(wildcard assets/*.glsl)

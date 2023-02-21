@@ -1,9 +1,8 @@
-tools/bin/
+bin/
 build/
 *.xcodeproj
 *.plist
 .DS_Store
-*.blend1
 *.metallib
 *.metal
 *.dia
