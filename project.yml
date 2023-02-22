@@ -20,8 +20,6 @@ targets:
           type: folder
         - path: deps/
           type: folder
-        - path: tools/
-          type: folder
         - path: build/
           type: folder
         - path: src/
@@ -33,4 +31,4 @@ targets:
         - sdk: AudioToolbox.framework
     settings:
         HEADER_SEARCH_PATHS: [$(PROJECT_DIR)/deps, $(PROJECT_DIR)/build]
-        OTHER_CFLAGS: [-fenable-matrix, "-x objective-c", -DSOKOL_METAL, -fobjc-arc]
+        OTHER_CFLAGS: ["-x objective-c", -DSOKOL_METAL, -fobjc-arc]

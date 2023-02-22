@@ -1,21 +1,22 @@
-# perlin-test
+# perlin-tool
 
 Simple tool to play with Perlin noise in real time.
 
 To build, first run ```bootstrap.sh``` (this downloads dependency headers and the sokol shader build tools) then run ```make```. The binary will be inside the ```build/``` directory. Only tested on Mac but should build on Windows (requires clang in PATH) and Linux out of the box.
 
-Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-test/).
+Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-tool/).
 
 ## Gallery
 
-![Screenshot](/assets/screenshot.png)
+![Screenshot 1](/assets/screenshot1.png)
+![Screenshot 2](/assets/screenshot2.png)
 
 ## Planned features
 
-- [ ] Display noise onto models
-- [ ] Lua scripting to interact with heightmap
-- [ ] Hot shader reloading to test noise
-- [ ] Node based editor? (Doubtful)
+- [ ] Load .obj files, display noise onto model
+- [X] ~~Lua scripting to interact with heightmap~~
+- [ ] User created shaders
+- [ ] Hotreloading for assets
 
 ## Dependencies
 
@@ -28,6 +29,10 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-te
     - nuklear.h
 - [miloyip/svpng](https://github.com/miloyip/svpng) (BSD-3-Clause)
     - svpng.inc
+- [nothings/stb](https://github.com/nothings/stb/blob/master/deprecated/stretchy_buffer.h) (MIT/Public Domain)
+    - stretchy_buffer.h (modified)
+- [edubart/minilua](https://github.com/edubart/minilua) (MIT) ([Lua license](https://www.lua.org/license.html))
+    - minilua.h
 
 ## License
 ```

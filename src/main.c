@@ -7,6 +7,8 @@
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_IMPLEMENTATION
 #include "nuklear.h"
+#define LUA_IMPL
+#include "minilua.h"
 #define SOKOL_IMPL
 #include "sokol_gfx.h"
 #include "sokol_app.h"
@@ -166,9 +168,82 @@ static unsigned char* PerlinFBM(int w, int h, float z, float xoff, float yoff, f
 }
 
 typedef float Vec2 __attribute__((ext_vector_type(2)));
+typedef float Vec3 __attribute__((ext_vector_type(3)));
+typedef float Vec4 __attribute__((ext_vector_type(4)));
+typedef float Mat4x4 __attribute__((matrix_type(4, 4)));
+
+#define V2TOV4(V) (Vec4){(V).x,(V).y,0.f,0.f}
+
+static Mat4x4 Mat4(float v) {
+    Mat4x4 result;
+    for (int i = 0; i < 4; i++)
+        result[i][i] = v;
+    return result;
+}
+
+static Mat4x4 Frustum(double left, double right, double bottom, double top, double near, double far) {
+    float rl = (float)(right - left);
+    float tb = (float)(top - bottom);
+    float fn = (float)(far - near);
+
+    Mat4x4 result = Mat4(0.f);
+    result[0][0] = ((float)near*2.0f)/rl;
+    result[1][1] = ((float)near*2.0f)/tb;
+    result[0][2] = ((float)right + (float)left)/rl;
+    result[1][2] = ((float)top + (float)bottom)/tb;
+    result[2][2] = -((float)far + (float)near)/fn;
+    result[3][2] = -1.0f;
+    result[2][3] = -((float)far*(float)near*2.0f)/fn;
+    return result;
+}
+
+static Mat4x4 Perspective(float fov, float aspectRatio, float near, float far) {
+    double top = near*tan(fov*0.5);
+    double right = top*aspectRatio;
+    return Frustum(-right, right, -top, top, near, far);
+}
+
+static Vec3 Vec3Normalize(Vec3 v) {
+    float length = sqrtf(v.x*v.x + v.y*v.y + v.z*v.z);
+    return v * length == 0.f ? 1.f : 1.f / length;
+}
+
+static Vec3 Vec3Cross(Vec3 v1, Vec3 v2) {
+    return (Vec3){ v1.y*v2.z - v1.z*v2.y, v1.z*v2.x - v1.x*v2.z, v1.x*v2.y - v1.y*v2.x };
+}
+
+static float Vec3Dot(Vec3 v1, Vec3 v2) {
+    return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
+}
+
+static Mat4x4 LookAt(Vec3 eye, Vec3 target, Vec3 up) {
+    Vec3 vz = Vec3Normalize(eye - target);
+    Vec3 vx = Vec3Normalize(Vec3Cross(up, vz));
+    Vec3 vy = Vec3Cross(vz, vx);
+    
+    Mat4x4 result = Mat4(0.f);
+    result[0][0] = vx.x;
+    result[1][0] = vy.x;
+    result[2][0] = vz.x;
+    result[3][0] = 0.0f;
+    result[0][1] = vx.y;
+    result[1][1] = vy.y;
+    result[2][1] = vz.y;
+    result[3][1] = 0.0f;
+    result[0][2] = vx.z;
+    result[1][2] = vy.z;
+    result[2][2] = vz.z;
+    result[3][2] = 0.0f;
+    result[0][3] = -Vec3Dot(vx, eye);
+    result[1][3] = -Vec3Dot(vy, eye);
+    result[2][3] = -Vec3Dot(vz, eye);
+    result[3][3] = 1.0f;
+    return result;
+}
 
 typedef struct {
-    Vec2 position, texcoord;
+    Vec4 position;
+    Vec2 texcoord;
 } Vertex;
 
 typedef sg_image Texture;
@@ -204,6 +279,78 @@ static void DestroyBitmap(Bitmap *bitmap) {
         free(bitmap->buf);
 }
 
+#define vector__sbraw(a) ((int *)(void *)(a)-2)
+#define vector__sbm(a) vector__sbraw(a)[0]
+#define vector__sbn(a) vector__sbraw(a)[1]
+
+#define vector__sbneedgrow(a, n) ((a) == 0 || vector__sbn(a) + (n) >= vector__sbm(a))
+#define vector__sbmaybegrow(a, n) (vector__sbneedgrow(a, (n)) ? vector__sbgrow(a, n) : 0)
+#define vector__sbgrow(a, n) (*((void **)&(a)) = vector__sbgrowf((a), (n), sizeof(*(a))))
+
+#define DestroyVector(a) ((a) ? free(vector__sbraw(a)), 0 : 0)
+#define VectorAppend(a, v) (vector__sbmaybegrow(a, 1), (a)[vector__sbn(a)++] = (v))
+#define VectorCount(a) ((a) ? vector__sbn(a) : 0)
+
+static void *vector__sbgrowf(void *arr, int increment, int itemsize) {
+    int dbl_cur = arr ? 2 * vector__sbm(arr) : 0;
+    int min_needed = VectorCount(arr) + increment;
+    int m = dbl_cur > min_needed ? dbl_cur : min_needed;
+    int *p = realloc(arr ? vector__sbraw(arr) : 0, itemsize * m + sizeof(int) * 2);
+    if (p) {
+        if (!arr)
+            p[1] = 0;
+        p[0] = m;
+        return p + 2;
+    } else {
+#ifdef VECTOR_OUT_OF_MEMORY
+        VECTOR_OUT_OF_MEMORY;
+#endif
+        return (void *)(2 * sizeof(int)); // try to force a NULL pointer exception later
+    }
+}
+
+#if defined(PLATFORM_WINDOWS)
+#include <io.h>
+#define F_OK 0
+#define access _access
+#define PATH_SEPERATOR "\\"
+#else
+#include <dirent.h>
+#include <unistd.h>
+#define PATH_SEPERATOR "/"
+#endif
+
+static const char* FileExt(const char *path) {
+    const char *dot = strrchr(path, '.');
+    return !dot || dot == path ? NULL : dot + 1;
+}
+
+static const char** FindFiles(const char *ext) {
+#if WEB_BUILD
+    return NULL;
+#else
+#if defined(PLATFORM_WINDOWS)
+    //! TODO: FindFiles() Windows
+    return NULL;
+#else
+    const char **result = NULL;
+    unsigned long extLength = strlen(ext);
+    static const char *path = "assets";
+    DIR *dir = opendir(path);
+    struct dirent *d;
+    while ((d = readdir(dir))) {
+        if (d->d_type == DT_REG) {
+            const char *newExt = FileExt(d->d_name);
+            if (newExt && !strncmp(newExt, ext, extLength))
+                VectorAppend(result, strdup(d->d_name));
+        }
+    }
+    closedir(dir);
+    return result;
+#endif
+#endif
+}
+
 #define DEFAULT_CANVAS_SIZE 512
 
 typedef struct {
@@ -233,16 +380,71 @@ static Settings settings = {
 };
 
 static struct {
-    Bitmap bitmap;
     sg_pass_action pass_action;
     sg_pipeline pipeline;
     sg_bindings binding;
+    Vertex vertices[6];
+    Bitmap bitmap;
     Texture texture;
-    Vertex vertex[6];
     bool update;
     float zoom;
     float scrollY;
+    const char **models;
+    int currentModel;
+    const char **scripts;
+    int currentScript;
+    lua_State *luaState;
 } state;
+
+typedef struct {
+    Bitmap *bitmap;
+} LuaBitmap;
+
+static int LuaBitmapPSet(lua_State *L) {
+    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
+    unsigned int x = (unsigned int)luaL_checkinteger(L, 2);
+    unsigned int y = (unsigned int)luaL_checkinteger(L, 3);
+    int color = (int)luaL_checkinteger(L, 4);
+    lbitmap->bitmap->buf[y * lbitmap->bitmap->w + x] = color;
+    return 0;
+}
+
+static int LuaBitmapPGet(lua_State *L) {
+    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
+    unsigned int x = (unsigned int)luaL_checkinteger(L, 2);
+    unsigned int y = (unsigned int)luaL_checkinteger(L, 3);
+    int color = lbitmap->bitmap->buf[y * lbitmap->bitmap->w + x];
+    lua_pushinteger(L, color);
+    return 1;
+}
+
+static const struct luaL_Reg BitmapMethods[] = {
+    {"pset", LuaBitmapPSet},
+    {"pget", LuaBitmapPGet},
+    {NULL, NULL}
+};
+
+static const struct luaL_Reg BitmapFunctions[] = {
+    {NULL, NULL}
+};
+
+static void LoadLuaScript(void) {
+    if (state.luaState)
+        lua_close(state.luaState);
+    
+    state.luaState = luaL_newstate();
+    luaL_openlibs(state.luaState);
+    
+    luaL_newmetatable(state.luaState, "Bitmap");
+    lua_pushvalue(state.luaState, -1);
+    lua_setfield(state.luaState, -2, "__index");
+    luaL_setfuncs(state.luaState, BitmapMethods, 0);
+    luaL_newlib(state.luaState, BitmapFunctions);
+    
+    char asset[1024];
+    sprintf(asset, "assets%s%s", PATH_SEPERATOR, state.scripts[state.currentScript-1]);
+    luaL_dofile(state.luaState, asset);
+}
 
 void init(void) {
     sg_setup(&(sg_desc){
@@ -255,30 +457,28 @@ void init(void) {
         .colors[0] = { .action=SG_ACTION_CLEAR, .value={.1f, .1f, .1f, 1.f} }
     };
     
+    state.texture = NewTexture(settings.canvasWidth, settings.canvasHeight);
+    state.bitmap = NewBitmap(settings.canvasWidth, settings.canvasHeight);
+    state.update = true;
+    state.zoom = 1.f;
+    
+    state.models = FindFiles("obj");
+    state.currentModel = 0;
+    state.scripts = FindFiles("lua");
+    state.currentScript = 0;
+    state.luaState = NULL;
+    
     state.pipeline = sg_make_pipeline(&(sg_pipeline_desc) {
         .primitive_type = SG_PRIMITIVETYPE_TRIANGLES,
         .shader = sg_make_shader(default_program_shader_desc(sg_query_backend())),
         .layout = {
             .buffers[0].stride = sizeof(Vertex),
             .attrs = {
-                [ATTR_default_vs_position].format=SG_VERTEXFORMAT_FLOAT2,
+                [ATTR_default_vs_position].format=SG_VERTEXFORMAT_FLOAT4,
                 [ATTR_default_vs_texcoord].format=SG_VERTEXFORMAT_FLOAT2
-            }
-        },
-        .colors[0] = {
-            .blend = {
-                .enabled = true,
-                .src_factor_rgb = SG_BLENDFACTOR_SRC_ALPHA,
-                .dst_factor_rgb = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                .op_rgb = SG_BLENDOP_ADD,
-                .src_factor_alpha = SG_BLENDFACTOR_ONE,
-                .dst_factor_alpha = SG_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
-                .op_alpha = SG_BLENDOP_ADD
             }
         }
     });
-    
-    state.texture = NewTexture(settings.canvasWidth, settings.canvasHeight);
     state.binding = (sg_bindings) {
         .fs_images[SLOT_tex] = state.texture,
         .vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc) {
@@ -286,10 +486,6 @@ void init(void) {
             .size = 6 * sizeof(Vertex)
         })
     };
-    
-    state.bitmap = NewBitmap(settings.canvasWidth, settings.canvasHeight);
-    state.update = true;
-    state.zoom = 1.f;
 }
 
 #if !WEB_BUILD
@@ -336,8 +532,9 @@ void frame(void) {
     Settings tmp;
     memcpy(&tmp, &settings, sizeof(Settings));
     
+    int currentModel = state.currentModel, currentScript = state.currentScript;
     if (nk_begin(ctx, "Settings", nk_rect(0, 0, 300, (int)(300.f * PHI)), NK_WINDOW_BORDER | NK_WINDOW_MINIMIZABLE)) {
-        if (nk_tree_push(ctx, NK_TREE_TAB, "Size", NK_MAXIMIZED)) {
+        if (nk_tree_push(ctx, NK_TREE_TAB, "Canvas", NK_MINIMIZED)) {
             nk_property_int(ctx, "#Width:", 128, &tmp.canvasWidth, 1024, 16, 1);
             nk_property_int(ctx, "#Height:", 128, &tmp.canvasHeight, 1024, 16, 1);
             nk_tree_pop(ctx);
@@ -359,11 +556,45 @@ void frame(void) {
             nk_tree_pop(ctx);
         }
 #if !WEB_BUILD
+        if (nk_tree_push(ctx, NK_TREE_TAB, "Script", NK_MINIMIZED)) {
+            int scriptCount = 1 + (state.scripts ? VectorCount(state.scripts) : 0);
+            const char* defaultScripts[scriptCount];
+            defaultScripts[0] = "Default (Nothing)";
+            memcpy(defaultScripts + 1, state.scripts, VectorCount(state.scripts) * sizeof(const char*));
+            currentScript = nk_combo(ctx, defaultScripts, scriptCount, currentScript, 20, nk_vec2(200, 200));
+            nk_tree_pop(ctx);
+        }
+        if (nk_tree_push(ctx, NK_TREE_TAB, "Target", NK_MINIMIZED)) {
+            int modelCount = 2 + (state.models ? VectorCount(state.models) : 0);
+            const char* defaultModels[modelCount];
+            defaultModels[0] = "Default (2D)";
+            defaultModels[1] = "Heightmap";
+            memcpy(defaultModels + 2, state.models, VectorCount(state.models) * sizeof(const char*));
+            currentModel = nk_combo(ctx, defaultModels, modelCount, currentModel, 20, nk_vec2(200, 200));
+            nk_tree_pop(ctx);
+        }
         if (nk_button_label(ctx, "Export"))
             ExportPNG();
 #endif
     }
     nk_end(ctx);
+    
+    if (currentModel != state.currentModel) {
+        state.update = true;
+        state.currentModel = currentModel;
+    }
+    
+    if (currentScript != state.currentScript) {
+        state.update = true;
+        state.currentScript = currentScript;
+        if (!currentScript) {
+            if (state.luaState) {
+                lua_close(state.luaState);
+                state.luaState = NULL;
+            }
+        } else
+            LoadLuaScript();
+    }
     
     if (tmp.canvasWidth != settings.canvasWidth || tmp.canvasHeight != settings.canvasHeight) {
         settings.canvasWidth = tmp.canvasWidth;
@@ -395,6 +626,16 @@ void frame(void) {
                 unsigned char h = heightmap[i];
                 state.bitmap.buf[i] = (int)((255 << 24) | (h << 16) | (h << 8) | h);
             }
+        
+        if (state.currentScript != 0) {
+            lua_getglobal(state.luaState, "heightmap_callback");
+            LuaBitmap *lbitmap = (LuaBitmap*)lua_newuserdata(state.luaState, sizeof(LuaBitmap));
+            lbitmap->bitmap = &state.bitmap;
+            luaL_getmetatable(state.luaState, "Bitmap");
+            lua_setmetatable(state.luaState, -2);
+            lua_pcall(state.luaState, 1, 0, 0);
+        }
+        
         sg_update_image(state.texture, &(sg_image_data) {
             .subimage[0][0] = {
                 .ptr  = state.bitmap.buf,
@@ -404,6 +645,8 @@ void frame(void) {
         state.update = false;
     }
     
+    sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
+    sg_apply_pipeline(state.pipeline);
     Vec2 size = {settings.canvasWidth, settings.canvasHeight};
     Vec2 viewport = {sapp_width(), sapp_height()};
     Vec2 position = (viewport / 2.f) - (size / 2.f);
@@ -426,22 +669,18 @@ void frame(void) {
         0, 1, 2,
         3, 0, 2
     };
-    
+
     for (int i = 0; i < 6; i++)
-        state.vertex[i] = (Vertex) {
-            .position = quad[indices[i]],
+        state.vertices[i] = (Vertex) {
+            .position = V2TOV4(quad[indices[i]]),
             .texcoord = vtexquad[indices[i]]
         };
-    
-    sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
-    sg_apply_pipeline(state.pipeline);
     sg_update_buffer(state.binding.vertex_buffers[0], &(sg_range) {
-        .ptr = state.vertex,
+        .ptr = state.vertices,
         .size = 6 * sizeof(Vertex)
     });
     sg_apply_bindings(&state.binding);
     sg_draw(0, 6, 1);
-    
     snk_render(sapp_width(), sapp_height());
     sg_end_pass();
     sg_commit();
@@ -471,10 +710,14 @@ void event(const sapp_event *e) {
 }
 
 void cleanup(void) {
+    for (int i = 0; i < VectorCount(state.models); i++)
+        free((void*)state.models[i]);
+    DestroyVector(state.models);
+    for (int i = 0; i < VectorCount(state.scripts); i++)
+        free((void*)state.scripts[i]);
+    DestroyVector(state.scripts);
     DestroyBitmap(&state.bitmap);
-    DestroyTexture(state.texture);
-    sg_destroy_pipeline(state.pipeline);
-    sg_destroy_buffer(state.binding.vertex_buffers[0]);
+    snk_shutdown();
     sg_shutdown();
 }
 

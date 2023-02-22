@@ -42,7 +42,7 @@ SHADER_OUT=$@
 	$(SHDC_PATH) -i $(SHADER) -o $(SHADER_OUT) -l glsl330:glsl100:glsl300es:hlsl4:metal_macos:wgpu
 	mv $(SHADER_OUT) build/
 
-shaders: $(SHADER_OUTS)
+shaders: $(SHADER_OUTS) cleanup
 
 app: shaders
 	$(CC) -Ibuild -Ideps $(CFLAGS) $(SOURCE) -o $(EXE)
@@ -53,4 +53,10 @@ web: shaders
 run: $(EXE)
 	./$(EXE)
 
-.PHONY: all app shaders models run assets images
+cleanup:
+	rm assets/*.air
+	rm assets/*.dia
+	rm assets/*.metallib
+	rm assets/*.metal
+
+.PHONY: all app shaders run cleanup
