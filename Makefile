@@ -6,7 +6,7 @@ else
 	UNAME:=$(shell uname -s)
 	PROG_EXT=
 	ifeq ($(UNAME),Darwin)
-		CFLAGS=-x objective-c -DSOKOL_METAL -fobjc-arc -framework Metal -framework Cocoa -framework MetalKit -framework Quartz -framework AudioToolbox
+		CFLAGS=-x objective-c -DSOKOL_METAL -fno-objc-arc -framework Metal -framework Cocoa -framework MetalKit -framework Quartz -framework AudioToolbox -framework CoreFoundation -framework CoreServices -lpthread
 		ARCH:=$(shell uname -m)
 		ifeq ($(ARCH),arm64)
 			ARCH=osx_arm64
@@ -14,7 +14,7 @@ else
 			ARCH=osx
 		endif
 	else ifeq ($(UNAME),Linux)
-		CFLAGS=-DSOKOL_GLCORE33 -pthread -lGL -ldl -lm -lX11 -lasound -lXi -lXcursor
+		CFLAGS=-DSOKOL_GLCORE33 -pthread -lGL -ldl -lm -lX11 -lasound -lXi -lXcursor -lpthread
 		ARCH=linux
 	else
 		$(error OS not supported by this Makefile)

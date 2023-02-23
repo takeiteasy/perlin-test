@@ -2,7 +2,7 @@
 
 Simple tool to play with Perlin noise in real time.
 
-To build, first run ```bootstrap.sh``` (this downloads dependency headers and the sokol shader build tools) then run ```make```. The binary will be inside the ```build/``` directory. Only tested on Mac but should build on Windows (requires clang in PATH) and Linux out of the box.
+To build, first run ```bootstrap.sh``` (this downloads dependency headers and the sokol shader build tools) then run ```make```. The binary will be inside the ```build/``` directory. Only tested on Mac but should build on Windows (requires clang in PATH) and Linux out of the box. If you're on Mac, you can also build the Xcode project with [Xcodegen](https://github.com/yonaskolb/XcodeGen).
 
 Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-tool/). **NOTE**: The web version is missing some features.
 
@@ -15,9 +15,10 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
 
 - [ ] Load .obj files, display noise onto model
 - [X] ~~Lua scripting to interact with heightmap~~
-    - [ ] Improve error handling for Lua scripts
 - [ ] User created shaders
-- [ ] Hotreloading for assets
+- [X] Hotreloading for assets
+- [ ] Error handling for assets
+- [ ] Touch controls
 
 ## Dependencies
 
@@ -34,6 +35,8 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
     - stretchy_buffer.h (modified)
 - [edubart/minilua](https://github.com/edubart/minilua) (MIT) ([Lua license](https://www.lua.org/license.html))
     - minilua.h
+- [septag/dmon](https://github.com/septag/dmon) (BSD-2-Clause)
+    - dmon.h
 
 ## License
 ```

@@ -31,4 +31,4 @@ targets:
         - sdk: AudioToolbox.framework
     settings:
         HEADER_SEARCH_PATHS: [$(PROJECT_DIR)/deps, $(PROJECT_DIR)/build]
-        OTHER_CFLAGS: ["-x objective-c", -DSOKOL_METAL, -fobjc-arc]
+        OTHER_CFLAGS: ["-x objective-c", -DSOKOL_METAL, -fno-objc-arc]

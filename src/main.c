@@ -18,6 +18,8 @@
 #include "minilua.h"
 #define SVPNG_LINKAGE static
 #include "svpng.inc"
+#define DMON_IMPL
+#include "dmon.h"
 #endif
 #define SOKOL_IMPL
 #include "sokol_gfx.h"
@@ -525,6 +527,19 @@ static void LoadLuaScript(void) {
     if (luaL_dofile(state.luaState, asset))
         LuaFail(state.luaState, "Errors found in lua script", false);
 }
+
+static void WatchCallback(dmon_watch_id watch_id, dmon_action action, const char* dirname, const char* filename, const char* oldname, void* user) {
+    switch (action) {
+        case DMON_ACTION_CREATE:
+            break;
+        case DMON_ACTION_DELETE:
+            break;
+        case DMON_ACTION_MODIFY:
+            break;
+        case DMON_ACTION_MOVE:
+            break;
+    }
+}
 #endif
 
 void init(void) {
@@ -549,6 +564,9 @@ void init(void) {
     state.scripts = FindFiles("lua");
     state.currentScript = 0;
     state.luaState = NULL;
+    
+    dmon_init();
+    dmon_watch("assets", WatchCallback, DMON_WATCHFLAGS_IGNORE_DIRECTORIES, NULL);
 #endif
     
     state.pipeline = sg_make_pipeline(&(sg_pipeline_desc) {
@@ -754,6 +772,7 @@ void frame(void) {
     
     sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
     sg_apply_pipeline(state.pipeline);
+    
     Vec2 size = {settings.canvasWidth, settings.canvasHeight};
     Vec2 viewport = {sapp_width(), sapp_height()};
     Vec2 position = (viewport / 2.f) - (size / 2.f);
@@ -766,6 +785,7 @@ void frame(void) {
     Vec2 v = (Vec2){2.f,-2.f} / viewport;
     for (int j = 0; j < 4; j++)
         quad[j] = (v * quad[j] + (Vec2){-1.f, 1.f}) * state.zoom;
+    
     static const Vec2 vtexquad[4] = {
         {0.f, 1.f}, // bottom left
         {1.f, 1.f}, // bottom right
@@ -776,20 +796,22 @@ void frame(void) {
         0, 1, 2,
         3, 0, 2
     };
-
     for (int i = 0; i < 6; i++)
         state.vertices[i] = (Vertex) {
             .position = V2TOV4(quad[indices[i]]),
             .texcoord = vtexquad[indices[i]]
         };
+    
     sg_update_buffer(state.binding.vertex_buffers[0], &(sg_range) {
         .ptr = state.vertices,
         .size = 6 * sizeof(Vertex)
     });
     sg_apply_bindings(&state.binding);
+    
     sg_draw(0, 6, 1);
     snk_render(sapp_width(), sapp_height());
     sg_end_pass();
+    
     sg_commit();
     state.scrollY = 0.f;
 }
@@ -825,6 +847,7 @@ void cleanup(void) {
         free((void*)state.scripts[i]);
     DestroyVector(state.scripts);
 #endif
+    dmon_deinit();
     DestroyBitmap(&state.bitmap);
     snk_shutdown();
     sg_shutdown();
