@@ -1,3 +1,9 @@
+#if defined(__EMSCRIPTEN__) || defined(EMSCRIPTEN)
+#define WEB_BUILD 1
+#else
+#define WEB_BUILD 0
+#endif
+
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_DEFAULT_ALLOCATOR
@@ -7,20 +13,18 @@
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_IMPLEMENTATION
 #include "nuklear.h"
+#if !WEB_BUILD
 #define LUA_IMPL
 #include "minilua.h"
+#define SVPNG_LINKAGE static
+#include "svpng.inc"
+#endif
 #define SOKOL_IMPL
 #include "sokol_gfx.h"
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_nuklear.h"
 #include "default.glsl.h"
-
-#if defined(__EMSCRIPTEN__) || defined(EMSCRIPTEN)
-#define WEB_BUILD 1
-#else
-#define WEB_BUILD 0
-#endif
 
 #if defined(macintosh) || defined(Macintosh) || (defined(__APPLE__) && defined(__MACH__))
 #define PLATFORM_MAC
@@ -277,6 +281,9 @@ static void DestroyBitmap(Bitmap *bitmap) {
         free(bitmap->buf);
 }
 
+#define RGB(R, G, B) (int)((255 << 24) | ((unsigned char)(B) << 16) | ((unsigned char)(G) << 8) | (unsigned char)(R))
+
+#if !WEB_BUILD
 #define vector__sbraw(a) ((int *)(void *)(a)-2)
 #define vector__sbm(a) vector__sbraw(a)[0]
 #define vector__sbn(a) vector__sbraw(a)[1]
@@ -324,9 +331,6 @@ static const char* FileExt(const char *path) {
 }
 
 static const char** FindFiles(const char *ext) {
-#if WEB_BUILD
-    return NULL;
-#else
 #if defined(PLATFORM_WINDOWS)
     //! TODO: FindFiles() Windows
     return NULL;
@@ -346,8 +350,8 @@ static const char** FindFiles(const char *ext) {
     closedir(dir);
     return result;
 #endif
-#endif
 }
+#endif
 
 #define DEFAULT_CANVAS_SIZE 512
 
@@ -384,13 +388,16 @@ static struct {
     bool update;
     float zoom;
     float scrollY;
+#if !WEB_BUILD
     const char **models;
     int currentModel;
     const char **scripts;
     int currentScript;
     lua_State *luaState;
+#endif
 } state;
 
+#if !WEB_BUILD
 typedef struct {
     Bitmap *bitmap;
 } LuaBitmap;
@@ -452,8 +459,6 @@ static void LuaFail(lua_State *L, char *msg, bool die) {
     if (die)
         exit(1);
 }
-
-#define RGB(R, G, B) (int)((255 << 24) | ((unsigned char)(B) << 16) | ((unsigned char)(G) << 8) | (unsigned char)(R))
 
 static int LuaRGB(lua_State *L) {
     int r = (int)luaL_checkinteger(L, 1);
@@ -520,6 +525,7 @@ static void LoadLuaScript(void) {
     if (luaL_dofile(state.luaState, asset))
         LuaFail(state.luaState, "Errors found in lua script", false);
 }
+#endif
 
 void init(void) {
     sg_setup(&(sg_desc){
@@ -537,11 +543,13 @@ void init(void) {
     state.update = true;
     state.zoom = 1.f;
     
+#if !WEB_BUILD
     state.models = FindFiles("obj");
     state.currentModel = 0;
     state.scripts = FindFiles("lua");
     state.currentScript = 0;
     state.luaState = NULL;
+#endif
     
     state.pipeline = sg_make_pipeline(&(sg_pipeline_desc) {
         .primitive_type = SG_PRIMITIVETYPE_TRIANGLES,
@@ -564,8 +572,6 @@ void init(void) {
 }
 
 #if !WEB_BUILD
-#include "svpng.inc"
-
 static void ExportPNG(void) {
     char path[256];
     time_t raw = time(NULL);
@@ -601,6 +607,7 @@ static void ExportPNG(void) {
 void frame(void) {
     state.delta = (float)(sapp_frame_duration() * 60.0);
     
+#if !WEB_BUILD
     if (state.currentScript != 0) {
         lua_getglobal(state.luaState, "preframe");
         if (lua_isfunction(state.luaState, -1)) {
@@ -608,14 +615,17 @@ void frame(void) {
                 LuaFail(state.luaState, "Failed to execute Lua script", false);
         }
     }
+#endif
     
     struct nk_context *ctx = snk_new_frame();
     Settings tmp;
     memcpy(&tmp, &settings, sizeof(Settings));
-    
+   
+#if !WEB_BUILD
     int currentModel = state.currentModel, currentScript = state.currentScript;
+#endif
     bool resetValues = false;
-    if (nk_begin(ctx, "Settings", nk_rect(0, 0, 300, (int)(300.f * PHI)), NK_WINDOW_BORDER | NK_WINDOW_MINIMIZABLE)) {
+    if (nk_begin(ctx, "Settings", nk_rect(0, 0, 300, (int)(300.f * PHI)), NK_WINDOW_SCALABLE | NK_WINDOW_BORDER | NK_WINDOW_MINIMIZABLE)) {
         if (nk_tree_push(ctx, NK_TREE_TAB, "Size", NK_MINIMIZED)) {
             nk_property_int(ctx, "#Width:", 128, &tmp.canvasWidth, 1024, 16, 1);
             nk_property_int(ctx, "#Height:", 128, &tmp.canvasHeight, 1024, 16, 1);
@@ -665,6 +675,7 @@ void frame(void) {
     if (!nk_window_is_any_hovered(ctx))
         state.zoom = CLAMP(state.zoom + (state.scrollY * state.delta), .1f, 10.f);
     
+#if !WEB_BUILD
     if (currentModel != state.currentModel) {
         state.update = true;
         state.currentModel = currentModel;
@@ -681,6 +692,7 @@ void frame(void) {
         } else
             LoadLuaScript();
     }
+#endif
     
     if (resetValues) {
 #define X(TYPE, NAME, DEFAULT) tmp.NAME = DEFAULT;
@@ -719,6 +731,7 @@ void frame(void) {
                 state.bitmap.buf[i] = RGB(h, h, h);
             }
         
+#if !WEB_BUILD
         if (state.currentScript != 0) {
             lua_getglobal(state.luaState, "frame");
             LuaBitmap *lbitmap = (LuaBitmap*)lua_newuserdata(state.luaState, sizeof(LuaBitmap));
@@ -728,6 +741,7 @@ void frame(void) {
             if (lua_pcall(state.luaState, 1, 0, 0))
                 LuaFail(state.luaState, "Failed to execute Lua script", false);
         }
+#endif
         
         sg_update_image(state.texture, &(sg_image_data) {
             .subimage[0][0] = {
@@ -803,12 +817,14 @@ void event(const sapp_event *e) {
 }
 
 void cleanup(void) {
+#if !WEB_BUILD
     for (int i = 0; i < VectorCount(state.models); i++)
         free((void*)state.models[i]);
     DestroyVector(state.models);
     for (int i = 0; i < VectorCount(state.scripts); i++)
         free((void*)state.scripts[i]);
     DestroyVector(state.scripts);
+#endif
     DestroyBitmap(&state.bitmap);
     snk_shutdown();
     sg_shutdown();

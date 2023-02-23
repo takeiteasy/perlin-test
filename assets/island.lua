@@ -26,6 +26,8 @@ function frame(heightmap) -- called pre-render when canvas updates
 				c = RGB(83, 168, 37) -- Grass, green, 0xFF25A853
 			elseif v >= 100 and v < 113 then
 				c = RGB(34, 92, 18) -- Forest, dark green, 0xFF125C22
+			elseif v >= 113 then
+				c = RGB(250, 250, 250) -- Mountains, white, 0xFFFAFAFA
 			else
 				c = RGB(66, 135, 245) -- Ocean, blue, 0xFFF58742
 			end

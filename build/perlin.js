@@ -3743,8 +3743,8 @@ var _emscripten_stack_get_current = Module["_emscripten_stack_get_current"] = fu
   return (_emscripten_stack_get_current = Module["_emscripten_stack_get_current"] = Module["asm"]["emscripten_stack_get_current"]).apply(null, arguments);
 };
 
-var ___start_em_js = Module['___start_em_js'] = 137184;
-var ___stop_em_js = Module['___stop_em_js'] = 143112;
+var ___start_em_js = Module['___start_em_js'] = 136848;
+var ___stop_em_js = Module['___stop_em_js'] = 142776;
 
 
 

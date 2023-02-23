@@ -6,9 +6,9 @@ To build, first run ```bootstrap.sh``` (this downloads dependency headers and th
 
 Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-tool/). **NOTE**: The web version is missing some features.
 
-![Screenshot](/assets/screenshot.png)
 <p align="center">
-    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/recording.gif" />
+    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/screenshot.png"/>
+    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/recording.gif"/>
 </p>
 
 ## Roadmap for v1.0.0

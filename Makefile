@@ -45,10 +45,10 @@ SHADER_OUT=$@
 shaders: $(SHADER_OUTS) cleanup
 
 app: shaders
-	$(CC) -Ibuild -Ideps $(CFLAGS) $(SOURCE) -o $(EXE)
+	$(CC) -Ibuild -Ideps -fenable-matrix $(CFLAGS) $(SOURCE) -o $(EXE)
 
 web: shaders
-	emcc -DSOKOL_GLES3 -Ibuild -Ideps $(SOURCE) -sUSE_WEBGL2=1 -o $(JS)
+	emcc -DSOKOL_GLES3 -Ibuild -Ideps -fenable-matrix $(SOURCE) -sUSE_WEBGL2=1 -o $(JS)
 
 run: $(EXE)
 	./$(EXE)
