@@ -11,6 +11,10 @@ download "floooh/sokol/master/sokol_app.h"
 download "miloyip/svpng/master/svpng.inc"
 download "Immediate-Mode-UI/Nuklear/master/nuklear.h"
 download "floooh/sokol/master/util/sokol_nuklear.h"
+download "septag/dmon/master/dmon.h"
+download "edubart/minilua/main/minilua.h"
+download "thisistherk/fast_obj/master/fast_obj.h"
+download "prideout/par/master/par_shapes.h"
 
 # Download sokol-shdc-tools binaries
 rm -rf bin/ || true

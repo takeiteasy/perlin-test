@@ -37,6 +37,10 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
     - minilua.h
 - [septag/dmon](https://github.com/septag/dmon) (BSD-2-Clause)
     - dmon.h
+- [thisistherk/fast_obj](https://github.com/thisistherk/fast_obj) (MIT)
+    - fast_obj.h
+- [prideout/par](https://github.com/prideout/par) (MIT)
+    - par_shapes.h
 
 ## License
 ```
