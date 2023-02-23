@@ -133,7 +133,7 @@ static float Remap(float value, float from1, float to1, float from2, float to2) 
     return (value - from1) / (to1 - from1) * (to2 - from2) + from2;
 }
 
-static unsigned char* PerlinFBM(int w, int h, float z, float xoff, float yoff, float scale, float lacunarity, float gain, int octaves, bool fadeOut) {
+static unsigned char* PerlinFBM(int w, int h, float z, float xoff, float yoff, float scale, float lacunarity, float gain, int octaves) {
     float min = FLT_MAX, max = FLT_MIN;
     float *grid = malloc(w * h * sizeof(float));
     for (int x = 0; x < w; ++x)
@@ -159,9 +159,7 @@ static unsigned char* PerlinFBM(int w, int h, float z, float xoff, float yoff, f
     for (int x = 0; x < w; x++)
         for (int y = 0; y < h; y++) {
             float height = 255.f - (255.f * Remap(grid[y * w + x], min, max, 0, 1.f));
-            float grad = fadeOut ? sqrtf(powf(w / 2 - x, 2.f) + powf(h / 2 - y, 2.f)) : 0.f;
-            float final = height - grad;
-            result[y * w + x] = (unsigned char)final;
+            result[y * w + x] = (unsigned char)height;
         }
     free(grid);
     return result;
@@ -353,30 +351,26 @@ static const char** FindFiles(const char *ext) {
 
 #define DEFAULT_CANVAS_SIZE 512
 
+#define SETTINGS \
+    X(int, canvasWidth, DEFAULT_CANVAS_SIZE) \
+    X(int, canvasHeight, DEFAULT_CANVAS_SIZE) \
+    X(float, xoff, 0.f) \
+    X(float, yoff, 0.f) \
+    X(float, zoff, 0.f) \
+    X(float, scale, 200.f) \
+    X(float, lacunarity, 2.f) \
+    X(float, gain, .5f) \
+    X(int, octaves, 8)
 typedef struct {
-    int canvasWidth;
-    int canvasHeight;
-    float xoff;
-    float yoff;
-    float zoff;
-    float scale;
-    float lacunarity;
-    float gain;
-    int octaves;
-    int fadeOut;
+#define X(TYPE, NAME, DEFAULT) TYPE NAME;
+    SETTINGS
+#undef X
 } Settings;
 
 static Settings settings = {
-    .canvasWidth = DEFAULT_CANVAS_SIZE,
-    .canvasHeight = DEFAULT_CANVAS_SIZE,
-    .xoff = 0.f,
-    .yoff = 0.f,
-    .zoff = 0.f,
-    .scale = 200.f,
-    .lacunarity = 2.f,
-    .gain = .5f,
-    .octaves = 8,
-    .fadeOut = 0
+#define X(TYPE, NAME, DEFAULT) .NAME = DEFAULT,
+    SETTINGS
+#undef X
 };
 
 static struct {
@@ -386,6 +380,7 @@ static struct {
     Vertex vertices[6];
     Bitmap bitmap;
     Texture texture;
+    float delta;
     bool update;
     float zoom;
     float scrollY;
@@ -418,15 +413,87 @@ static int LuaBitmapPGet(lua_State *L) {
     return 1;
 }
 
+static int LuaBitmapGet(lua_State *L) {
+    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
+    unsigned int x = (unsigned int)luaL_checkinteger(L, 2);
+    unsigned int y = (unsigned int)luaL_checkinteger(L, 3);
+    unsigned char color = lbitmap->bitmap->buf[y * lbitmap->bitmap->w + x] & 0xFF;
+    lua_pushinteger(L, color);
+    return 1;
+}
+
+static int LuaBitmapWidth(lua_State *L) {
+    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
+    lua_pushinteger(L, lbitmap->bitmap->w);
+    return 1;
+}
+
+static int LuaBitmapHeight(lua_State *L) {
+    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
+    lua_pushinteger(L, lbitmap->bitmap->h);
+    return 1;
+}
+
 static const struct luaL_Reg BitmapMethods[] = {
     {"pset", LuaBitmapPSet},
     {"pget", LuaBitmapPGet},
+    {"get", LuaBitmapGet},
+    {"width", LuaBitmapWidth},
+    {"height", LuaBitmapHeight},
     {NULL, NULL}
 };
 
 static const struct luaL_Reg BitmapFunctions[] = {
     {NULL, NULL}
 };
+
+static void LuaFail(lua_State *L, char *msg, bool die) {
+    fprintf(stderr, "\nERROR:\n  %s: %s\n\n", msg, lua_tostring(L, -1));
+    if (die)
+        exit(1);
+}
+
+#define RGB(R, G, B) (int)((255 << 24) | ((unsigned char)(B) << 16) | ((unsigned char)(G) << 8) | (unsigned char)(R))
+
+static int LuaRGB(lua_State *L) {
+    int r = (int)luaL_checkinteger(L, 1);
+    int g = (int)luaL_checkinteger(L, 2);
+    int b = (int)luaL_checkinteger(L, 3);
+    int c = RGB(r, g, b);
+    lua_pushinteger(L, c);
+    return 1;
+}
+
+static int LuaSettings(lua_State *L) {
+    const char *setting = luaL_checkstring(L, 1);
+    
+    if (!lua_isnumber(L, 2)) {
+#define X(TYPE, NAME, DEFAULT)                            \
+        if (!strcmp(setting, #NAME)) {                    \
+            lua_pushnumber(L, (lua_Number)settings.NAME); \
+            state.update = true;                          \
+            return 1;                                     \
+        }
+        SETTINGS
+#undef X
+        luaL_error(L, "Unknown setting: '%s'", setting);
+        return 0;
+    }
+#define X(TYPE, NAME, DEFAULT)                        \
+    if (!strcmp(setting, #NAME)) {                    \
+        settings.NAME = (TYPE)luaL_checknumber(L, 2); \
+        return 0;                                     \
+    }
+    SETTINGS
+#undef X
+    luaL_error(L, "Unknown setting: '%s'", setting);
+    return 0;
+}
+
+static int LuaDelta(lua_State *L) {
+    lua_pushnumber(L, (lua_Number)state.delta);
+    return 1;
+}
 
 static void LoadLuaScript(void) {
     if (state.luaState)
@@ -441,9 +508,17 @@ static void LoadLuaScript(void) {
     luaL_setfuncs(state.luaState, BitmapMethods, 0);
     luaL_newlib(state.luaState, BitmapFunctions);
     
+    lua_pushcfunction(state.luaState, LuaRGB);
+    lua_setglobal(state.luaState, "RGB");
+    lua_pushcfunction(state.luaState, LuaSettings);
+    lua_setglobal(state.luaState, "Setting");
+    lua_pushcfunction(state.luaState, LuaDelta);
+    lua_setglobal(state.luaState, "Delta");
+    
     char asset[1024];
     sprintf(asset, "assets%s%s", PATH_SEPERATOR, state.scripts[state.currentScript-1]);
-    luaL_dofile(state.luaState, asset);
+    if (luaL_dofile(state.luaState, asset))
+        LuaFail(state.luaState, "Errors found in lua script", false);
 }
 
 void init(void) {
@@ -524,17 +599,24 @@ static void ExportPNG(void) {
 #define CLAMP(n, min, max) (MIN(MAX(n, min), max))
 
 void frame(void) {
-    float delta = (float)(sapp_frame_duration() * 60.0);
+    state.delta = (float)(sapp_frame_duration() * 60.0);
     
-    state.zoom = CLAMP(state.zoom + (state.scrollY * delta), .1f, 10.f);
+    if (state.currentScript != 0) {
+        lua_getglobal(state.luaState, "preframe");
+        if (lua_isfunction(state.luaState, -1)) {
+            if (lua_pcall(state.luaState, 0, 0, 0))
+                LuaFail(state.luaState, "Failed to execute Lua script", false);
+        }
+    }
     
     struct nk_context *ctx = snk_new_frame();
     Settings tmp;
     memcpy(&tmp, &settings, sizeof(Settings));
     
     int currentModel = state.currentModel, currentScript = state.currentScript;
+    bool resetValues = false;
     if (nk_begin(ctx, "Settings", nk_rect(0, 0, 300, (int)(300.f * PHI)), NK_WINDOW_BORDER | NK_WINDOW_MINIMIZABLE)) {
-        if (nk_tree_push(ctx, NK_TREE_TAB, "Canvas", NK_MINIMIZED)) {
+        if (nk_tree_push(ctx, NK_TREE_TAB, "Size", NK_MINIMIZED)) {
             nk_property_int(ctx, "#Width:", 128, &tmp.canvasWidth, 1024, 16, 1);
             nk_property_int(ctx, "#Height:", 128, &tmp.canvasHeight, 1024, 16, 1);
             nk_tree_pop(ctx);
@@ -552,7 +634,8 @@ void frame(void) {
             nk_slider_float(ctx, .1f, &tmp.gain, 5.f, .1f);
             nk_labelf(ctx, NK_TEXT_LEFT, "Octaves: %d", settings.octaves);
             nk_slider_int(ctx, 1, &tmp.octaves, 16, 1);
-            nk_checkbox_label(ctx, "Apply circular gradient", &tmp.fadeOut);
+            if (nk_button_label(ctx, "Reset"))
+                resetValues = true;
             nk_tree_pop(ctx);
         }
 #if !WEB_BUILD
@@ -578,6 +661,9 @@ void frame(void) {
 #endif
     }
     nk_end(ctx);
+   
+    if (!nk_window_is_any_hovered(ctx))
+        state.zoom = CLAMP(state.zoom + (state.scrollY * state.delta), .1f, 10.f);
     
     if (currentModel != state.currentModel) {
         state.update = true;
@@ -594,6 +680,13 @@ void frame(void) {
             }
         } else
             LoadLuaScript();
+    }
+    
+    if (resetValues) {
+#define X(TYPE, NAME, DEFAULT) tmp.NAME = DEFAULT;
+        SETTINGS
+#undef X
+        state.update = true;
     }
     
     if (tmp.canvasWidth != settings.canvasWidth || tmp.canvasHeight != settings.canvasHeight) {
@@ -613,27 +706,27 @@ void frame(void) {
         tmp.scale != settings.scale ||
         tmp.lacunarity != settings.lacunarity ||
         tmp.gain != settings.gain ||
-        tmp.octaves != settings.octaves ||
-        tmp.fadeOut != settings.fadeOut)
+        tmp.octaves != settings.octaves)
         state.update = true;
     
     if (state.update) {
         memcpy(&settings, &tmp, sizeof(Settings));
-        unsigned char *heightmap = PerlinFBM(settings.canvasWidth, settings.canvasHeight, settings.zoff, settings.xoff, settings.yoff, settings.scale, settings.lacunarity, settings.gain, settings.octaves, settings.fadeOut);
+        unsigned char *heightmap = PerlinFBM(settings.canvasWidth, settings.canvasHeight, settings.zoff, settings.xoff, settings.yoff, settings.scale, settings.lacunarity, settings.gain, settings.octaves);
         for (int x = 0; x < settings.canvasWidth; x++)
             for (int y = 0; y < settings.canvasHeight; y++) {
                 int i = y * settings.canvasWidth + x;
                 unsigned char h = heightmap[i];
-                state.bitmap.buf[i] = (int)((255 << 24) | (h << 16) | (h << 8) | h);
+                state.bitmap.buf[i] = RGB(h, h, h);
             }
         
         if (state.currentScript != 0) {
-            lua_getglobal(state.luaState, "heightmap_callback");
+            lua_getglobal(state.luaState, "frame");
             LuaBitmap *lbitmap = (LuaBitmap*)lua_newuserdata(state.luaState, sizeof(LuaBitmap));
             lbitmap->bitmap = &state.bitmap;
             luaL_getmetatable(state.luaState, "Bitmap");
             lua_setmetatable(state.luaState, -2);
-            lua_pcall(state.luaState, 1, 0, 0);
+            if (lua_pcall(state.luaState, 1, 0, 0))
+                LuaFail(state.luaState, "Failed to execute Lua script", false);
         }
         
         sg_update_image(state.texture, &(sg_image_data) {

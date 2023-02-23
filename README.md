@@ -4,17 +4,16 @@ Simple tool to play with Perlin noise in real time.
 
 To build, first run ```bootstrap.sh``` (this downloads dependency headers and the sokol shader build tools) then run ```make```. The binary will be inside the ```build/``` directory. Only tested on Mac but should build on Windows (requires clang in PATH) and Linux out of the box.
 
-Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-tool/).
+Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-tool/). **NOTE**: The web version is missing some features.
 
-## Gallery
+![Screenshot](/assets/screenshot.png)
+![Recording](/assets/recording.png)
 
-![Screenshot 1](/assets/screenshot1.png)
-![Screenshot 2](/assets/screenshot2.png)
-
-## Planned features
+## Roadmap for v1.0.0
 
 - [ ] Load .obj files, display noise onto model
 - [X] ~~Lua scripting to interact with heightmap~~
+    - [ ] Improve error handling for Lua scripts
 - [ ] User created shaders
 - [ ] Hotreloading for assets
 
