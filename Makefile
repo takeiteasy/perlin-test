@@ -22,6 +22,7 @@ else
 endif
 
 CC=clang
+SOURCES=-Ibuild -Ideps -Iinclude
 SOURCE=$(wildcard src/*.c)
 NAME=perlin
 
@@ -45,10 +46,10 @@ SHADER_OUT=$@
 shaders: $(SHADER_OUTS) cleanup
 
 app: shaders
-	$(CC) -Ibuild -Ideps -fenable-matrix $(CFLAGS) $(SOURCE) -o $(EXE)
+	$(CC) $(SOURCES) -fenable-matrix $(CFLAGS) $(SOURCE) -o $(EXE)
 
 web: shaders
-	emcc -DSOKOL_GLES3 -Ibuild -Ideps -fenable-matrix $(SOURCE) -sUSE_WEBGL2=1 -o $(JS)
+	emcc -DSOKOL_GLES3 $(SOURCES) -fenable-matrix $(SOURCE) -sUSE_WEBGL2=1 -o $(JS)
 
 run: $(EXE)
 	./$(EXE)

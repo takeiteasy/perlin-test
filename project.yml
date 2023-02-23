@@ -23,6 +23,7 @@ targets:
         - path: build/
           type: folder
         - path: src/
+        - path: include/
     dependencies:
         - sdk: Cocoa.framework
         - sdk: Metal.framework
