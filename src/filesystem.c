@@ -31,10 +31,6 @@ const char* FileExt(const char *path) {
 }
 
 const char** FindFiles(const char *ext) {
-#if defined(PLATFORM_WINDOWS)
-    //! TODO: FindFiles() Windows
-    return NULL;
-#else
     const char **result = NULL;
     unsigned long extLength = strlen(ext);
     static const char *path = "assets";
@@ -49,5 +45,4 @@ const char** FindFiles(const char *ext) {
     }
     closedir(dir);
     return result;
-#endif
 }

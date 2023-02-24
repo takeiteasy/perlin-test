@@ -12,13 +12,10 @@
 #include <stdlib.h>
 #include <string.h>
 #if defined(PLATFORM_WINDOWS)
-#include <io.h>
-#define F_OK 0
-#define access _access
+#include "dirent_win32.h"
 #define PATH_SEPERATOR "\\"
 #else
 #include <dirent.h>
-#include <unistd.h>
 #define PATH_SEPERATOR "/"
 #endif
 

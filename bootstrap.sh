@@ -15,6 +15,8 @@ download "septag/dmon/master/dmon.h"
 download "edubart/minilua/main/minilua.h"
 download "thisistherk/fast_obj/master/fast_obj.h"
 download "prideout/par/master/par_shapes.h"
+download "win32ports/dirent_h/master/dirent.h"
+mv deps/dirent.h deps/dirent_win32.h
 
 # Download sokol-shdc-tools binaries
 rm -rf bin/ || true

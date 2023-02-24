@@ -13,8 +13,8 @@
 #include "filesystem.h"
 #include "lua.h"
 #include "dmon.h"
+#include <time.h>
 #endif
-#include <sys/time.h>
 
 #define DEFAULT_CANVAS_SIZE 512
 
@@ -144,6 +144,7 @@ void init(void) {
             }
         }
     });
+    
     state.binding = (sg_bindings) {
         .fs_images[SLOT_tex] = state.texture,
         .vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc) {
@@ -152,16 +153,6 @@ void init(void) {
         })
     };
 }
-
-#define PHI 1.618033988749895f
-
-#if !defined(MIN)
-#define MIN(a, b) (a < b ? a : b)
-#endif
-#if !defined(MAX)
-#define MAX(a, b) (a > b ? a : b)
-#endif
-#define CLAMP(n, min, max) (MIN(MAX(n, min), max))
 
 void frame(void) {
     state.delta = (float)(sapp_frame_duration() * 60.0);

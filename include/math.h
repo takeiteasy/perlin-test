@@ -9,6 +9,16 @@
 #define math_h
 #include <math.h>
 
+#define PHI 1.618033988749895f
+
+#if !defined(MIN)
+#define MIN(a, b) (a < b ? a : b)
+#endif
+#if !defined(MAX)
+#define MAX(a, b) (a > b ? a : b)
+#endif
+#define CLAMP(n, min, max) (MIN(MAX(n, min), max))
+
 typedef float Vec2 __attribute__((ext_vector_type(2)));
 typedef float Vec3 __attribute__((ext_vector_type(3)));
 typedef float Vec4 __attribute__((ext_vector_type(4)));

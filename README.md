@@ -41,6 +41,8 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
     - fast_obj.h
 - [prideout/par](https://github.com/prideout/par) (MIT)
     - par_shapes.h
+- [win32ports/dirent_h](https://github.com/win32ports/dirent_h/) (MIT)
+    - dirent_win32.h
 
 ## License
 ```
