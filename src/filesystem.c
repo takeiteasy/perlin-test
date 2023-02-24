@@ -46,3 +46,12 @@ const char** FindFiles(const char *ext) {
     closedir(dir);
     return result;
 }
+
+bool DoesFileExist(const char *path) {
+    return !access(path, F_OK);
+}
+
+bool DoesDirExist(const char *path) {
+    struct stat sb;
+    return stat(path, &sb) == 0 && S_ISDIR(sb.st_mode);
+}

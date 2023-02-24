@@ -19,6 +19,13 @@
 #define DestroyVector(a) ((a) ? free(vector__sbraw(a)), 0 : 0)
 #define VectorAppend(a, v) (vector__sbmaybegrow(a, 1), (a)[vector__sbn(a)++] = (v))
 #define VectorCount(a) ((a) ? vector__sbn(a) : 0)
+#define VectorLast(a) ((a)[vector__sbn(a)-1])
+#define VectorRemove(a, idx)      \
+    do                            \
+    {                             \
+        (a)[idx] = VectorLast(a); \
+        --vector__sbn(a);         \
+    } while (0)
 
 void *VectorGrow(void *arr, int increment, int itemsize);
 

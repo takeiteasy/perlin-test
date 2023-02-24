@@ -16,7 +16,8 @@
 #include "lua.h"
 #define DMON_IMPL
 #include "dmon.h"
-#include <time.h>
+#define THREADS_IMPL
+#include "threads.h"
 #endif
 #define SOKOL_IMPL
 #include "sokol_gfx.h"
@@ -66,6 +67,7 @@ static struct {
     const char **scripts;
     int currentScript;
     lua_State *luaState;
+    mtx_t luaStateLock;
 #endif
 } state;
 
@@ -101,15 +103,64 @@ int LuaDelta(lua_State *L) {
     return 1;
 }
 
-static void WatchCallback(dmon_watch_id watch_id, dmon_action action, const char* dirname, const char* filename, const char* oldname, void* user) {
+static void WatchCallback(dmon_watch_id watch_id, dmon_action action, const char *dirname, const char *filename, const char *oldname, void *user) {
+    const char *ext = FileExt(filename);
+    if (!ext)
+        return;
+    char full[1024];
+    sprintf(full, "%s%s", dirname, filename);
+    
     switch (action) {
-        case DMON_ACTION_CREATE:
+        case DMON_ACTION_CREATE:;
+            if (!DoesFileExist(full))
+                return;
+            bool fallthrough = false;
+            if (!strncmp("lua", ext, 3)) {
+                bool alreadyExisted = false;
+                for (int i = 0; i < VectorCount(state.scripts); i++)
+                    if (!strcmp(filename, state.scripts[i])) {
+                        alreadyExisted = true;
+                        break;
+                    }
+                if (alreadyExisted)
+                    fallthrough = true;
+                else
+                    VectorAppend(state.scripts, strdup(filename));
+            }
+            if (!fallthrough)
+                break;
+        case DMON_ACTION_MODIFY:
+            if (!DoesFileExist(full))
+                return;
+            if (!strncmp("lua", ext, 3)) {
+                if (!state.currentScript)
+                    return;
+                if (!strcmp(filename, state.scripts[state.currentScript-1])) {
+                    mtx_lock(&state.luaStateLock);
+                    lua_close(state.luaState);
+                    state.luaState = LoadLuaScript(state.scripts[state.currentScript-1]);
+                    mtx_unlock(&state.luaStateLock);
+                }
+            }
             break;
         case DMON_ACTION_DELETE:
-            break;
-        case DMON_ACTION_MODIFY:
+            if (!strncmp("lua", ext, 3)) {
+                for (int i = 0; i < VectorCount(state.scripts); i++)
+                    if (!strcmp(state.scripts[i], filename)) {
+                        free((void*)state.scripts[i]);
+                        VectorRemove(state.scripts, i);
+                        if (state.currentScript - 1 == i) {
+                            mtx_lock(&state.luaStateLock);
+                            lua_close(state.luaState);
+                            state.luaState = NULL;
+                            state.currentScript = 0;
+                            mtx_unlock(&state.luaStateLock);
+                        }
+                    }
+            }
             break;
         case DMON_ACTION_MOVE:
+            //! TODO: Handle DMON_ACTION_MOVE (DMON_ACTION_MOVE never triggers on Mac?)
             break;
     }
 }
@@ -137,6 +188,7 @@ void init(void) {
     state.scripts = FindFiles("lua");
     state.currentScript = 0;
     state.luaState = NULL;
+    mtx_init(&state.luaStateLock, mtx_plain);
     
     dmon_init();
     dmon_watch("assets", WatchCallback, DMON_WATCHFLAGS_IGNORE_DIRECTORIES, NULL);
@@ -167,8 +219,11 @@ void frame(void) {
     state.delta = (float)(sapp_frame_duration() * 60.0);
     
 #if !WEB_BUILD
-    if (state.currentScript != 0)
+    if (state.currentScript != 0) {
+        mtx_lock(&state.luaStateLock);
         LuaCallPreframe(state.luaState);
+        mtx_unlock(&state.luaStateLock);
+    }
 #endif
     
     struct nk_context *ctx = snk_new_frame();
@@ -241,6 +296,7 @@ void frame(void) {
     }
     
     if (currentScript != state.currentScript) {
+        mtx_lock(&state.luaStateLock);
         state.update = true;
         state.currentScript = currentScript;
         if (!currentScript) {
@@ -253,6 +309,7 @@ void frame(void) {
                 lua_close(state.luaState);
             state.luaState = LoadLuaScript(state.scripts[state.currentScript-1]);
         }
+        mtx_unlock(&state.luaStateLock);
     }
 #endif
     
@@ -294,8 +351,11 @@ void frame(void) {
             }
         
 #if !WEB_BUILD
-        if (state.currentScript != 0)
+        if (state.currentScript != 0) {
+            mtx_lock(&state.luaStateLock);
             LuaCallFrame(state.luaState, &state.bitmap);
+            mtx_unlock(&state.luaStateLock);
+        }
 #endif
         
         sg_update_image(state.texture, &(sg_image_data) {

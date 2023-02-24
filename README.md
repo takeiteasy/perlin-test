@@ -16,7 +16,7 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
 - [ ] Load .obj files, display noise onto model
 - [X] ~~Lua scripting to interact with heightmap~~
 - [ ] User created shaders
-- [X] Hotreloading for assets
+- [X] ~~Hotreloading for assets~~
 - [ ] Error handling for assets
 - [ ] Touch controls
 
@@ -43,6 +43,8 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
     - par_shapes.h
 - [win32ports/dirent_h](https://github.com/win32ports/dirent_h/) (MIT)
     - dirent_win32.h
+- [yohhoy/threads.h](https://gist.github.com/yohhoy/2223710) (Boost)
+    - threads.h ([modified](https://gist.github.com/takeiteasy/f04ccebdaed5a9f554b99e7b4456198e))
 
 ## License
 ```
