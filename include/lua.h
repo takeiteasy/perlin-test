@@ -12,7 +12,7 @@
 #include "filesystem.h"
 
 void LuaDumpTable(lua_State* L, int table_idx);
-void LuaDumpStack(lua_State* L);
+int LuaDumpStack(lua_State* L);
 void LuaFail(lua_State *L, char *msg, bool die);
 int LuaSettings(lua_State *L);
 int LuaDelta(lua_State *L);

@@ -1,6 +1,6 @@
 -- Uses height and circular gradient to create an island from perlin noise
 
-function preframe(heightmap) -- optional, called at start of frame
+function preframe() -- optional, called at start of frame
 	local x = Setting("xoff") -- Get setting "xoff"
 	local y = Setting("yoff")
 	local delta = Delta() * 10.0 -- Get delta time from progam
