@@ -5,6 +5,7 @@
 //  Created by George Watson on 23/02/2023.
 //
 
+#define LUA_IMPL
 #include "lua.h"
 
 typedef struct {

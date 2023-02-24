@@ -6,8 +6,6 @@
 //
 
 #include "bitmap.h"
-#define SVPNG_LINKAGE static
-#include "svpng.inc"
 
 Texture NewTexture(int w, int h) {
     return sg_make_image(&(sg_image_desc) {
@@ -30,6 +28,10 @@ Bitmap NewBitmap(unsigned int w, unsigned int h) {
     };
 }
 
+#if !WEB_BUILD
+#define SVPNG_LINKAGE static
+#include "svpng.inc"
+
 void ExportBitmap(Bitmap *bitmap, const char *path) {
     FILE *fp = fopen(path, "wb");
     unsigned char *out = malloc(bitmap->w * bitmap->h * 3 * sizeof(unsigned char));
@@ -45,6 +47,8 @@ void ExportBitmap(Bitmap *bitmap, const char *path) {
     free(out);
     fclose(fp);
 }
+#else
+#endif
 
 void DestroyBitmap(Bitmap *bitmap) {
     if (bitmap && bitmap->buf)

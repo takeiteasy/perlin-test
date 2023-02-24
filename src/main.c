@@ -1,20 +1,29 @@
+#define NK_INCLUDE_FIXED_TYPES
+#define NK_INCLUDE_STANDARD_IO
+#define NK_INCLUDE_DEFAULT_ALLOCATOR
+#define NK_INCLUDE_VERTEX_BUFFER_OUTPUT
+#define NK_INCLUDE_FONT_BAKING
+#define NK_INCLUDE_DEFAULT_FONT
 #define NK_INCLUDE_STANDARD_VARARGS
+#define NK_IMPLEMENTATION
 #include "nuklear.h"
-#include "sokol_gfx.h"
-#include "sokol_app.h"
-#include "sokol_glue.h"
-#include "sokol_nuklear.h"
-#include "default.glsl.h"
 #include "bitmap.h"
-#include "math.h"
+#include "maths.h"
 #include "perlin.h"
 #include "vector.h"
 #if !WEB_BUILD
 #include "filesystem.h"
 #include "lua.h"
+#define DMON_IMPL
 #include "dmon.h"
 #include <time.h>
 #endif
+#define SOKOL_IMPL
+#include "sokol_gfx.h"
+#include "sokol_app.h"
+#include "sokol_glue.h"
+#include "sokol_nuklear.h"
+#include "default.glsl.h"
 
 #define DEFAULT_CANVAS_SIZE 512
 
@@ -374,8 +383,8 @@ void cleanup(void) {
     for (int i = 0; i < VectorCount(state.scripts); i++)
         free((void*)state.scripts[i]);
     DestroyVector(state.scripts);
-#endif
     dmon_deinit();
+#endif
     DestroyBitmap(&state.bitmap);
     snk_shutdown();
     sg_shutdown();

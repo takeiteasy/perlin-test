@@ -1,12 +1,12 @@
 //
-//  math.h
+//  maths.h
 //  sokol
 //
 //  Created by George Watson on 23/02/2023.
 //
 
-#ifndef math_h
-#define math_h
+#ifndef maths_h
+#define maths_h
 #include <math.h>
 
 #define PHI 1.618033988749895f

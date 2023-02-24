@@ -1,11 +1,11 @@
 //
-//  math.c
+//  maths.c
 //  sokol
 //
 //  Created by George Watson on 23/02/2023.
 //
 
-#include "math.h"
+#include "maths.h"
 
 Mat4x4 Mat4(float v) {
     Mat4x4 result;

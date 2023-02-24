@@ -7,7 +7,9 @@
 
 #ifndef bitmap_h
 #define bitmap_h
+#include "platform.h"
 #include "sokol_gfx.h"
+#include <stdio.h>
 #include <stdlib.h>
 
 #define RGB(R, G, B) (int)((255 << 24) | ((unsigned char)(B) << 16) | ((unsigned char)(G) << 8) | (unsigned char)(R))
@@ -22,7 +24,9 @@ typedef struct {
 Texture NewTexture(int w, int h);
 void DestroyTexture(Texture texture);
 Bitmap NewBitmap(unsigned int w, unsigned int h);
+#if !WEB_BUILD
 void ExportBitmap(Bitmap *bitmap, const char *path);
+#endif
 void DestroyBitmap(Bitmap *bitmap);
 
 #endif /* bitmap_h */
