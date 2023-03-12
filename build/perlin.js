@@ -3754,8 +3754,8 @@ var _emscripten_stack_get_current = function() {
 
 /** @type {function(...*):?} */
 var dynCall_jiji = Module["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
-var ___start_em_js = Module['___start_em_js'] = 137148;
-var ___stop_em_js = Module['___stop_em_js'] = 143076;
+var ___start_em_js = Module['___start_em_js'] = 137788;
+var ___stop_em_js = Module['___stop_em_js'] = 143716;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===

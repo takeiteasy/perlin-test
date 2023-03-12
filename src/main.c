@@ -312,6 +312,7 @@ static int ColorToRGB(Vec4 color) {
     return RGBA((int)(color.x * 255.f), (int)(color.y * 255.f), (int)(color.z * 255.f), (int)(color.w * 255));
 }
 
+#if !WEB_BUILD
 static void ExportBiomes(const char *path) {
     FILE *fh = fopen(path, "w");
     Jim jim = {
@@ -341,6 +342,7 @@ static void ExportBiomes(const char *path) {
     jim_object_end(&jim);
     fclose(fh);
 }
+#endif
 
 void frame(void) {
     state.delta = (float)(sapp_frame_duration() * 60.0);
@@ -424,6 +426,7 @@ void frame(void) {
                     AddNewBiome();
                     state.update = true;
                 }
+#if !WEB_BUILD
                 if (nk_button_label(ctx, "Export Biomes") && state.biomes.head) {
                     char path[256];
                     time_t raw = time(NULL);
@@ -431,6 +434,7 @@ void frame(void) {
                     strftime(path, 256, "Biomes %G-%m-%d at %H.%M.%S.json", t);
                     ExportBiomes(path);
                 }
+#endif
             }
             nk_tree_pop(ctx);
         }
