@@ -11,6 +11,13 @@
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_IMPLEMENTATION
 #include "nuklear.h"
+#define SOKOL_IMPL
+#include "sokol_gfx.h"
+#include "sokol_app.h"
+#include "sokol_glue.h"
+#include "sokol_nuklear.h"
+#include "default.glsl.h"
+#include "maths.h"
 #if !WEB_BUILD
 #include "filesystem.h"
 #include "lua.h"
@@ -19,14 +26,6 @@
 #define THREADS_IMPL
 #include "threads.h"
 #endif
-#define SOKOL_IMPL
-#include "sokol_gfx.h"
-#include "sokol_app.h"
-#include "sokol_glue.h"
-#include "sokol_nuklear.h"
-#include "default.glsl.h"
-#include "maths.h"
-
 
 #define DEFAULT_CANVAS_SIZE 512
 
@@ -61,6 +60,8 @@ static struct {
     Texture texture;
     float delta;
     bool update;
+    bool dragging;
+    Vec2 mouseDelta;
     struct {
         float zoom;
         Vec2 position;
@@ -186,6 +187,9 @@ void init(void) {
     state.bitmap = NewBitmap(settings.canvasWidth, settings.canvasHeight);
     state.update = true;
     state.camera.zoom = 1.f;
+    state.camera.position = (Vec2){0.f, 0.f};
+    state.dragging = false;
+    state.mouseDelta = (Vec2){0.f, 0.f};
     
 #if !WEB_BUILD
     state.models = FindFiles("obj");
@@ -291,8 +295,12 @@ void frame(void) {
     }
     nk_end(ctx);
    
-    if (!nk_window_is_any_hovered(ctx))
+    if (!nk_window_is_any_hovered(ctx)) {
         state.camera.zoom = CLAMP(state.camera.zoom + (state.scrollY * state.delta), .1f, 10.f);
+        
+        if (state.dragging)
+            state.camera.position += state.mouseDelta;
+    }
     
 #if !WEB_BUILD
     if (currentModel != state.currentModel) {
@@ -376,7 +384,7 @@ void frame(void) {
     
     Vec2 size = {settings.canvasWidth, settings.canvasHeight};
     Vec2 viewport = {sapp_width(), sapp_height()};
-    Vec2 position = (viewport / 2.f) - (size / 2.f);
+    Vec2 position = state.camera.position + (viewport / 2.f) - (size / 2.f);
     Vec2 quad[4] = {
         {position.x, position.y + size.y}, // bottom left
         position + size, // bottom right
@@ -433,6 +441,13 @@ void event(const sapp_event *e) {
             break;
         case SAPP_EVENTTYPE_MOUSE_SCROLL:
             state.scrollY = e->scroll_y;
+            break;
+        case SAPP_EVENTTYPE_MOUSE_DOWN:
+        case SAPP_EVENTTYPE_MOUSE_UP:
+            state.dragging = e->mouse_button == SAPP_MOUSEBUTTON_LEFT && e->type == SAPP_EVENTTYPE_MOUSE_DOWN;
+            break;
+        case SAPP_EVENTTYPE_MOUSE_MOVE:
+            state.mouseDelta = (Vec2){e->mouse_dx, e->mouse_dy};
             break;
         default:
             break;
