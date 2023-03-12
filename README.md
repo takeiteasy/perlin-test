@@ -1,15 +1,16 @@
 # perlin-tool
 
-Simple tool to play with Perlin noise in real time.
+Simple tool to play with Perlin noise in real time. **WIP**.
+
+<p align="center">
+    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/screenshot.png"/>
+</p>
+
+## Build
 
 To build, first run ```bootstrap.sh``` (this downloads dependency headers and the sokol shader build tools) then run ```make```. The binary will be inside the ```build/``` directory. Only tested on Mac but should build on Windows (requires clang in PATH) and Linux out of the box. If you're on Mac, you can also build the Xcode project with [Xcodegen](https://github.com/yonaskolb/XcodeGen).
 
 Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-tool/). **NOTE**: The web version is missing some features.
-
-<p align="center">
-    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/screenshot.png"/>
-    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/recording.gif"/>
-</p>
 
 ## Roadmap for v1.0.0
 
@@ -19,6 +20,8 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
 - [X] ~~Hotreloading for assets~~
 - [ ] Error handling for assets
 - [ ] Touch controls
+- [ ] Biome controls
+- [ ] Config file + args
 
 ## Dependencies
 

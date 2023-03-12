@@ -8,62 +8,6 @@
 #define LUA_IMPL
 #include "lua.h"
 
-typedef struct {
-    Bitmap *bitmap;
-} LuaBitmap;
-
-static int LuaBitmapPSet(lua_State *L) {
-    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
-    unsigned int x = (unsigned int)luaL_checkinteger(L, 2);
-    unsigned int y = (unsigned int)luaL_checkinteger(L, 3);
-    int color = (int)luaL_checkinteger(L, 4);
-    lbitmap->bitmap->buf[y * lbitmap->bitmap->w + x] = color;
-    return 0;
-}
-
-static int LuaBitmapPGet(lua_State *L) {
-    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
-    unsigned int x = (unsigned int)luaL_checkinteger(L, 2);
-    unsigned int y = (unsigned int)luaL_checkinteger(L, 3);
-    int color = lbitmap->bitmap->buf[y * lbitmap->bitmap->w + x];
-    lua_pushinteger(L, color);
-    return 1;
-}
-
-static int LuaBitmapGet(lua_State *L) {
-    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
-    unsigned int x = (unsigned int)luaL_checkinteger(L, 2);
-    unsigned int y = (unsigned int)luaL_checkinteger(L, 3);
-    unsigned char color = lbitmap->bitmap->buf[y * lbitmap->bitmap->w + x] & 0xFF;
-    lua_pushinteger(L, color);
-    return 1;
-}
-
-static int LuaBitmapWidth(lua_State *L) {
-    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
-    lua_pushinteger(L, lbitmap->bitmap->w);
-    return 1;
-}
-
-static int LuaBitmapHeight(lua_State *L) {
-    LuaBitmap *lbitmap = (LuaBitmap*)luaL_checkudata(L, 1, "Bitmap");
-    lua_pushinteger(L, lbitmap->bitmap->h);
-    return 1;
-}
-
-static const struct luaL_Reg BitmapMethods[] = {
-    {"pset", LuaBitmapPSet},
-    {"pget", LuaBitmapPGet},
-    {"get", LuaBitmapGet},
-    {"width", LuaBitmapWidth},
-    {"height", LuaBitmapHeight},
-    {NULL, NULL}
-};
-
-static const struct luaL_Reg BitmapFunctions[] = {
-    {NULL, NULL}
-};
-
 void LuaDumpTable(lua_State* L, int idx) {
     printf("--------------- LUA TABLE DUMP ---------------\n");
     lua_pushvalue(L, idx);
@@ -129,27 +73,10 @@ void LuaFail(lua_State *L, char *msg, bool die) {
         exit(1);
 }
 
-static int LuaRGB(lua_State *L) {
-    int r = (int)luaL_checkinteger(L, 1);
-    int g = (int)luaL_checkinteger(L, 2);
-    int b = (int)luaL_checkinteger(L, 3);
-    int c = RGB(r, g, b);
-    lua_pushinteger(L, c);
-    return 1;
-}
-
 lua_State* LoadLuaScript(const char *filename) {
     lua_State *L = luaL_newstate();
     luaL_openlibs(L);
     
-    luaL_newmetatable(L, "Bitmap");
-    lua_pushvalue(L, -1);
-    lua_setfield(L, -2, "__index");
-    luaL_setfuncs(L, BitmapMethods, 0);
-    luaL_newlib(L, BitmapFunctions);
-    
-    lua_pushcfunction(L, LuaRGB);
-    lua_setglobal(L, "RGB");
     lua_pushcfunction(L, LuaSettings);
     lua_setglobal(L, "Setting");
     lua_pushcfunction(L, LuaDelta);
@@ -172,12 +99,22 @@ void LuaCallPreframe(lua_State *L) {
     }
 }
 
-void LuaCallFrame(lua_State *L, Bitmap *bitmap) {
-    lua_getglobal(L, "frame");
-    LuaBitmap *lbitmap = (LuaBitmap*)lua_newuserdata(L, sizeof(LuaBitmap));
-    lbitmap->bitmap = bitmap;
-    luaL_getmetatable(L, "Bitmap");
-    lua_setmetatable(L, -2);
-    if (lua_pcall(L, 1, 0, 0))
-        LuaFail(L, "Failed to execute Lua script", false);
+void LuaCallFrame(lua_State *L, unsigned char *heightmap, int w, int h) {
+    for (int x = 0; x < w; x++)
+        for (int y = 0; y < h; y++) {
+            lua_getglobal(L, "callback");
+            if (!lua_isfunction(L, -1))
+                LuaFail(L, "Failed to execute Lua script", false);
+            lua_pushnumber(L, heightmap[y * w + x]);
+            lua_pushinteger(L, x);
+            lua_pushinteger(L, y);
+            lua_pushinteger(L, w);
+            lua_pushinteger(L, h);
+            if (lua_pcall(L, 5, 1, 0))
+                LuaFail(L, "Failed to execute Lua script", false);
+            if (!lua_isnumber(L, -1))
+                LuaFail(L, "Invalid return value from Lua callback", false);
+            heightmap[y * w + x] = CLAMP(lua_tonumber(L, -1), 0, 255);
+            lua_pop(L, 1);
+        }
 }

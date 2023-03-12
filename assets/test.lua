@@ -1,5 +1,6 @@
 function preframe()
 end
 
-function frame(heightmap)
+function callback(v, x, y, w, h)
+	return v / 2
 end

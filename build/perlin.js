@@ -1,5 +1,4 @@
-
-
+// include: shell.js
 // The Module object: Our interface to the outside world. We import
 // and export values on it. There are various ways Module can be used:
 // 1. Not defined. We create it here
@@ -15,13 +14,9 @@
 // can continue to use Module afterwards as well.
 var Module = typeof Module != 'undefined' ? Module : {};
 
-// See https://caniuse.com/mdn-javascript_builtins_object_assign
-
-// See https://caniuse.com/mdn-javascript_builtins_bigint64array
-
 // --pre-jses are emitted after the Module integration code, so that they can
 // refer to Module (if they choose; they can also define Module)
-// {{PRE_JSES}}
+
 
 // Sometimes an existing Module object exists with properties
 // meant to overwrite the default module functionality. Here
@@ -100,8 +95,6 @@ if (ENVIRONMENT_IS_NODE) {
   }
 
 // include: node_shell_read.js
-
-
 read_ = (filename, binary) => {
   // We need to re-wrap `file://` strings to URLs. Normalizing isn't
   // necessary in that case, the path should already be absolute.
@@ -128,17 +121,17 @@ readAsync = (filename, onload, onerror) => {
 };
 
 // end include: node_shell_read.js
-  if (process['argv'].length > 1) {
-    thisProgram = process['argv'][1].replace(/\\/g, '/');
+  if (process.argv.length > 1) {
+    thisProgram = process.argv[1].replace(/\\/g, '/');
   }
 
-  arguments_ = process['argv'].slice(2);
+  arguments_ = process.argv.slice(2);
 
   if (typeof module != 'undefined') {
     module['exports'] = Module;
   }
 
-  process['on']('uncaughtException', function(ex) {
+  process.on('uncaughtException', function(ex) {
     // suppress ExitStatus exceptions from showing an error
     if (!(ex instanceof ExitStatus)) {
       throw ex;
@@ -150,15 +143,18 @@ readAsync = (filename, onload, onerror) => {
   // not be needed with node v15 and about because it is now the default
   // behaviour:
   // See https://nodejs.org/api/cli.html#cli_unhandled_rejections_mode
-  process['on']('unhandledRejection', function(reason) { throw reason; });
+  var nodeMajor = process.versions.node.split(".")[0];
+  if (nodeMajor < 15) {
+    process.on('unhandledRejection', function(reason) { throw reason; });
+  }
 
   quit_ = (status, toThrow) => {
     if (keepRuntimeAlive()) {
-      process['exitCode'] = status;
+      process.exitCode = status;
       throw toThrow;
     }
     logExceptionOnExit(toThrow);
-    process['exit'](status);
+    process.exit(status);
   };
 
   Module['inspect'] = function () { return '[Emscripten Module object]'; };
@@ -187,6 +183,10 @@ if (ENVIRONMENT_IS_SHELL) {
   readAsync = function readAsync(f, onload, onerror) {
     setTimeout(() => onload(readBinary(f)), 0);
   };
+
+  if (typeof clearTimeout == 'undefined') {
+    globalThis.clearTimeout = (id) => {};
+  }
 
   if (typeof scriptArgs != 'undefined') {
     arguments_ = scriptArgs;
@@ -237,9 +237,7 @@ if (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER) {
   // be done differently.
   {
 // include: web_or_worker_shell_read.js
-
-
-  read_ = (url) => {
+read_ = (url) => {
       var xhr = new XMLHttpRequest();
       xhr.open('GET', url, false);
       xhr.send(null);
@@ -323,113 +321,9 @@ var NODEFS = 'NODEFS is no longer included by default; build with -lnodefs.js';
 
 assert(!ENVIRONMENT_IS_SHELL, "shell environment detected but not enabled at build time.  Add 'shell' to `-sENVIRONMENT` to enable.");
 
-// include: support.js
 
-
-var STACK_ALIGN = 16;
-var POINTER_SIZE = 4;
-
-function getNativeTypeSize(type) {
-  switch (type) {
-    case 'i1': case 'i8': case 'u8': return 1;
-    case 'i16': case 'u16': return 2;
-    case 'i32': case 'u32': return 4;
-    case 'i64': case 'u64': return 8;
-    case 'float': return 4;
-    case 'double': return 8;
-    default: {
-      if (type[type.length - 1] === '*') {
-        return POINTER_SIZE;
-      }
-      if (type[0] === 'i') {
-        const bits = Number(type.substr(1));
-        assert(bits % 8 === 0, 'getNativeTypeSize invalid bits ' + bits + ', type ' + type);
-        return bits / 8;
-      }
-      return 0;
-    }
-  }
-}
-
-// include: runtime_debug.js
-
-
-function legacyModuleProp(prop, newName) {
-  if (!Object.getOwnPropertyDescriptor(Module, prop)) {
-    Object.defineProperty(Module, prop, {
-      configurable: true,
-      get: function() {
-        abort('Module.' + prop + ' has been replaced with plain ' + newName + ' (the initial value can be provided on Module, but after startup the value is only looked for on a local variable of that name)');
-      }
-    });
-  }
-}
-
-function ignoredModuleProp(prop) {
-  if (Object.getOwnPropertyDescriptor(Module, prop)) {
-    abort('`Module.' + prop + '` was supplied but `' + prop + '` not included in INCOMING_MODULE_JS_API');
-  }
-}
-
-// forcing the filesystem exports a few things by default
-function isExportedByForceFilesystem(name) {
-  return name === 'FS_createPath' ||
-         name === 'FS_createDataFile' ||
-         name === 'FS_createPreloadedFile' ||
-         name === 'FS_unlink' ||
-         name === 'addRunDependency' ||
-         // The old FS has some functionality that WasmFS lacks.
-         name === 'FS_createLazyFile' ||
-         name === 'FS_createDevice' ||
-         name === 'removeRunDependency';
-}
-
-function missingLibrarySymbol(sym) {
-  if (typeof globalThis !== 'undefined' && !Object.getOwnPropertyDescriptor(globalThis, sym)) {
-    Object.defineProperty(globalThis, sym, {
-      configurable: true,
-      get: function() {
-        // Can't `abort()` here because it would break code that does runtime
-        // checks.  e.g. `if (typeof SDL === 'undefined')`.
-        var msg = '`' + sym + '` is a library symbol and not included by default; add it to your library.js __deps or to DEFAULT_LIBRARY_FUNCS_TO_INCLUDE on the command line';
-        // DEFAULT_LIBRARY_FUNCS_TO_INCLUDE requires the name as it appears in
-        // library.js, which means $name for a JS name with no prefix, or name
-        // for a JS name like _name.
-        var librarySymbol = sym;
-        if (!librarySymbol.startsWith('_')) {
-          librarySymbol = '$' + sym;
-        }
-        msg += " (e.g. -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=" + librarySymbol + ")";
-        if (isExportedByForceFilesystem(sym)) {
-          msg += '. Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you';
-        }
-        warnOnce(msg);
-        return undefined;
-      }
-    });
-  }
-}
-
-function unexportedRuntimeSymbol(sym) {
-  if (!Object.getOwnPropertyDescriptor(Module, sym)) {
-    Object.defineProperty(Module, sym, {
-      configurable: true,
-      get: function() {
-        var msg = "'" + sym + "' was not exported. add it to EXPORTED_RUNTIME_METHODS (see the FAQ)";
-        if (isExportedByForceFilesystem(sym)) {
-          msg += '. Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you';
-        }
-        abort(msg);
-      }
-    });
-  }
-}
-
-// end include: runtime_debug.js
-// end include: support.js
-
-
-
+// end include: shell.js
+// include: preamble.js
 // === Preamble library stuff ===
 
 // Documentation for the public APIs defined in this file must be updated in:
@@ -476,8 +370,6 @@ function assert(condition, text) {
 // builds with assertions.
 
 // include: runtime_strings.js
-
-
 // runtime_strings.js: String related runtime functions that are part of both
 // MINIMAL_RUNTIME and regular runtime.
 
@@ -551,6 +443,7 @@ function UTF8ArrayToString(heapOrArray, idx, maxBytesToRead) {
  * @return {string}
  */
 function UTF8ToString(ptr, maxBytesToRead) {
+  assert(typeof ptr == 'number');
   return ptr ? UTF8ArrayToString(HEAPU8, ptr, maxBytesToRead) : '';
 }
 
@@ -669,8 +562,6 @@ function lengthBytesUTF8(str) {
 // Memory management
 
 var HEAP,
-/** @type {!ArrayBuffer} */
-  buffer,
 /** @type {!Int8Array} */
   HEAP8,
 /** @type {!Uint8Array} */
@@ -688,32 +579,26 @@ var HEAP,
 /** @type {!Float64Array} */
   HEAPF64;
 
-function updateGlobalBufferAndViews(buf) {
-  buffer = buf;
-  Module['HEAP8'] = HEAP8 = new Int8Array(buf);
-  Module['HEAP16'] = HEAP16 = new Int16Array(buf);
-  Module['HEAP32'] = HEAP32 = new Int32Array(buf);
-  Module['HEAPU8'] = HEAPU8 = new Uint8Array(buf);
-  Module['HEAPU16'] = HEAPU16 = new Uint16Array(buf);
-  Module['HEAPU32'] = HEAPU32 = new Uint32Array(buf);
-  Module['HEAPF32'] = HEAPF32 = new Float32Array(buf);
-  Module['HEAPF64'] = HEAPF64 = new Float64Array(buf);
+function updateMemoryViews() {
+  var b = wasmMemory.buffer;
+  Module['HEAP8'] = HEAP8 = new Int8Array(b);
+  Module['HEAP16'] = HEAP16 = new Int16Array(b);
+  Module['HEAP32'] = HEAP32 = new Int32Array(b);
+  Module['HEAPU8'] = HEAPU8 = new Uint8Array(b);
+  Module['HEAPU16'] = HEAPU16 = new Uint16Array(b);
+  Module['HEAPU32'] = HEAPU32 = new Uint32Array(b);
+  Module['HEAPF32'] = HEAPF32 = new Float32Array(b);
+  Module['HEAPF64'] = HEAPF64 = new Float64Array(b);
 }
 
-var STACK_SIZE = 65536;
-if (Module['STACK_SIZE']) assert(STACK_SIZE === Module['STACK_SIZE'], 'the stack size can no longer be determined at runtime')
+assert(!Module['STACK_SIZE'], 'STACK_SIZE can no longer be set at runtime.  Use -sSTACK_SIZE at link time')
 
-var INITIAL_MEMORY = Module['INITIAL_MEMORY'] || 16777216;legacyModuleProp('INITIAL_MEMORY', 'INITIAL_MEMORY');
-
-assert(INITIAL_MEMORY >= STACK_SIZE, 'INITIAL_MEMORY should be larger than STACK_SIZE, was ' + INITIAL_MEMORY + '! (STACK_SIZE=' + STACK_SIZE + ')');
-
-// check for full engine support (use string 'subarray' to avoid closure compiler confusion)
 assert(typeof Int32Array != 'undefined' && typeof Float64Array !== 'undefined' && Int32Array.prototype.subarray != undefined && Int32Array.prototype.set != undefined,
        'JS engine does not provide full typed array support');
 
-// If memory is defined in wasm, the user can't provide it.
+// If memory is defined in wasm, the user can't provide it, or set INITIAL_MEMORY
 assert(!Module['wasmMemory'], 'Use of `wasmMemory` detected.  Use -sIMPORTED_MEMORY to define wasmMemory externally');
-assert(INITIAL_MEMORY == 16777216, 'Detected runtime INITIAL_MEMORY setting.  Use -sIMPORTED_MEMORY to define wasmMemory dynamically');
+assert(!Module['INITIAL_MEMORY'], 'Detected runtime INITIAL_MEMORY setting.  Use -sIMPORTED_MEMORY to define wasmMemory dynamically');
 
 // include: runtime_init_table.js
 // In regular non-RELOCATABLE mode the table is exported
@@ -723,8 +608,6 @@ var wasmTable;
 
 // end include: runtime_init_table.js
 // include: runtime_stack_check.js
-
-
 // Initializes the stack cookie. Called at the startup of main and at the startup of each thread in pthreads mode.
 function writeStackCookie() {
   var max = _emscripten_stack_get_end();
@@ -738,7 +621,7 @@ function writeStackCookie() {
   // The stack grow downwards towards _emscripten_stack_get_end.
   // We write cookies to the final two words in the stack and detect if they are
   // ever overwritten.
-  HEAPU32[((max)>>2)] = 0x2135467;
+  HEAPU32[((max)>>2)] = 0x02135467;
   HEAPU32[(((max)+(4))>>2)] = 0x89BACDFE;
   // Also test the global address 0 for integrity.
   HEAPU32[0] = 0x63736d65; /* 'emsc' */
@@ -753,7 +636,7 @@ function checkStackCookie() {
   }
   var cookie1 = HEAPU32[((max)>>2)];
   var cookie2 = HEAPU32[(((max)+(4))>>2)];
-  if (cookie1 != 0x2135467 || cookie2 != 0x89BACDFE) {
+  if (cookie1 != 0x02135467 || cookie2 != 0x89BACDFE) {
     abort('Stack overflow! Stack cookie has been overwritten at ' + ptrToString(max) + ', expected hex dwords 0x89BACDFE and 0x2135467, but received ' + ptrToString(cookie2) + ' ' + ptrToString(cookie1));
   }
   // Also test the global address 0 for integrity.
@@ -764,8 +647,6 @@ function checkStackCookie() {
 
 // end include: runtime_stack_check.js
 // include: runtime_assertions.js
-
-
 // Endianness check
 (function() {
   var h16 = new Int16Array(1);
@@ -788,14 +669,12 @@ function keepRuntimeAlive() {
 }
 
 function preRun() {
-
   if (Module['preRun']) {
     if (typeof Module['preRun'] == 'function') Module['preRun'] = [Module['preRun']];
     while (Module['preRun'].length) {
       addOnPreRun(Module['preRun'].shift());
     }
   }
-
   callRuntimeCallbacks(__ATPRERUN__);
 }
 
@@ -848,8 +727,6 @@ function addOnPostRun(cb) {
 }
 
 // include: runtime_math.js
-
-
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/imul
 
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/fround
@@ -982,11 +859,7 @@ function abort(what) {
   throw e;
 }
 
-// {{MEM_INITIALIZER}}
-
 // include: memoryprofiler.js
-
-
 // end include: memoryprofiler.js
 // show errors on likely calls to FS when it was not included
 var FS = {
@@ -1009,8 +882,6 @@ Module['FS_createDataFile'] = FS.createDataFile;
 Module['FS_createPreloadedFile'] = FS.createPreloadedFile;
 
 // include: URIUtils.js
-
-
 // Prefix of data URIs emitted by SINGLE_FILE and related options.
 var dataURIPrefix = 'data:application/octet-stream;base64,';
 
@@ -1042,6 +913,8 @@ function createExportWrapper(name, fixedasm) {
   };
 }
 
+// include: runtime_exceptions.js
+// end include: runtime_exceptions.js
 var wasmBinaryFile;
   wasmBinaryFile = 'perlin.wasm';
   if (!isDataURI(wasmBinaryFile)) {
@@ -1063,7 +936,7 @@ function getBinary(file) {
   }
 }
 
-function getBinaryPromise() {
+function getBinaryPromise(binaryFile) {
   // If we don't have the binary yet, try to to load it asynchronously.
   // Fetch has some additional restrictions over XHR, like it can't be used on a file:// url.
   // See https://github.com/github/fetch/pull/92#issuecomment-140665932
@@ -1071,29 +944,82 @@ function getBinaryPromise() {
   // So use fetch if it is available and the url is not a file, otherwise fall back to XHR.
   if (!wasmBinary && (ENVIRONMENT_IS_WEB || ENVIRONMENT_IS_WORKER)) {
     if (typeof fetch == 'function'
-      && !isFileURI(wasmBinaryFile)
+      && !isFileURI(binaryFile)
     ) {
-      return fetch(wasmBinaryFile, { credentials: 'same-origin' }).then(function(response) {
+      return fetch(binaryFile, { credentials: 'same-origin' }).then(function(response) {
         if (!response['ok']) {
-          throw "failed to load wasm binary file at '" + wasmBinaryFile + "'";
+          throw "failed to load wasm binary file at '" + binaryFile + "'";
         }
         return response['arrayBuffer']();
       }).catch(function () {
-          return getBinary(wasmBinaryFile);
+          return getBinary(binaryFile);
       });
     }
     else {
       if (readAsync) {
         // fetch is not available or url is file => try XHR (readAsync uses XHR internally)
         return new Promise(function(resolve, reject) {
-          readAsync(wasmBinaryFile, function(response) { resolve(new Uint8Array(/** @type{!ArrayBuffer} */(response))) }, reject)
+          readAsync(binaryFile, function(response) { resolve(new Uint8Array(/** @type{!ArrayBuffer} */(response))) }, reject)
         });
       }
     }
   }
 
   // Otherwise, getBinary should be able to get it synchronously
-  return Promise.resolve().then(function() { return getBinary(wasmBinaryFile); });
+  return Promise.resolve().then(function() { return getBinary(binaryFile); });
+}
+
+function instantiateArrayBuffer(binaryFile, imports, receiver) {
+  return getBinaryPromise(binaryFile).then(function(binary) {
+    return WebAssembly.instantiate(binary, imports);
+  }).then(function (instance) {
+    return instance;
+  }).then(receiver, function(reason) {
+    err('failed to asynchronously prepare wasm: ' + reason);
+
+    // Warn on some common problems.
+    if (isFileURI(wasmBinaryFile)) {
+      err('warning: Loading from a file URI (' + wasmBinaryFile + ') is not supported in most browsers. See https://emscripten.org/docs/getting_started/FAQ.html#how-do-i-run-a-local-webserver-for-testing-why-does-my-program-stall-in-downloading-or-preparing');
+    }
+    abort(reason);
+  });
+}
+
+function instantiateAsync(binary, binaryFile, imports, callback) {
+  if (!binary &&
+      typeof WebAssembly.instantiateStreaming == 'function' &&
+      !isDataURI(binaryFile) &&
+      // Don't use streaming for file:// delivered objects in a webview, fetch them synchronously.
+      !isFileURI(binaryFile) &&
+      // Avoid instantiateStreaming() on Node.js environment for now, as while
+      // Node.js v18.1.0 implements it, it does not have a full fetch()
+      // implementation yet.
+      //
+      // Reference:
+      //   https://github.com/emscripten-core/emscripten/pull/16917
+      !ENVIRONMENT_IS_NODE &&
+      typeof fetch == 'function') {
+    return fetch(binaryFile, { credentials: 'same-origin' }).then(function(response) {
+      // Suppress closure warning here since the upstream definition for
+      // instantiateStreaming only allows Promise<Repsponse> rather than
+      // an actual Response.
+      // TODO(https://github.com/google/closure-compiler/pull/3913): Remove if/when upstream closure is fixed.
+      /** @suppress {checkTypes} */
+      var result = WebAssembly.instantiateStreaming(response, imports);
+
+      return result.then(
+        callback,
+        function(reason) {
+          // We expect the most common failure cause to be a bad MIME type for the binary,
+          // in which case falling back to ArrayBuffer instantiation should work.
+          err('wasm streaming compile failed: ' + reason);
+          err('falling back to ArrayBuffer instantiation');
+          return instantiateArrayBuffer(binaryFile, imports, callback);
+        });
+    });
+  } else {
+    return instantiateArrayBuffer(binaryFile, imports, callback);
+  }
 }
 
 // Create the wasm instance.
@@ -1101,8 +1027,8 @@ function getBinaryPromise() {
 function createWasm() {
   // prepare imports
   var info = {
-    'env': asmLibraryArg,
-    'wasi_snapshot_preview1': asmLibraryArg,
+    'env': wasmImports,
+    'wasi_snapshot_preview1': wasmImports,
   };
   // Load the wasm module and create an instance of using native support in the JS engine.
   // handle a generated wasm instance, receiving its exports and
@@ -1119,7 +1045,7 @@ function createWasm() {
     // mode.
     // TODO(sbc): Read INITIAL_MEMORY out of the wasm file in post-link mode.
     //assert(wasmMemory.buffer.byteLength === 16777216);
-    updateGlobalBufferAndViews(wasmMemory.buffer);
+    updateMemoryViews();
 
     wasmTable = Module['asm']['__indirect_function_table'];
     assert(wasmTable, "table not found in wasm exports");
@@ -1128,6 +1054,7 @@ function createWasm() {
 
     removeRunDependency('wasm-instantiate');
 
+    return exports;
   }
   // wait for the pthread pool (if any)
   addRunDependency('wasm-instantiate');
@@ -1147,74 +1074,20 @@ function createWasm() {
     receiveInstance(result['instance']);
   }
 
-  function instantiateArrayBuffer(receiver) {
-    return getBinaryPromise().then(function(binary) {
-      return WebAssembly.instantiate(binary, info);
-    }).then(function (instance) {
-      return instance;
-    }).then(receiver, function(reason) {
-      err('failed to asynchronously prepare wasm: ' + reason);
-
-      // Warn on some common problems.
-      if (isFileURI(wasmBinaryFile)) {
-        err('warning: Loading from a file URI (' + wasmBinaryFile + ') is not supported in most browsers. See https://emscripten.org/docs/getting_started/FAQ.html#how-do-i-run-a-local-webserver-for-testing-why-does-my-program-stall-in-downloading-or-preparing');
-      }
-      abort(reason);
-    });
-  }
-
-  function instantiateAsync() {
-    if (!wasmBinary &&
-        typeof WebAssembly.instantiateStreaming == 'function' &&
-        !isDataURI(wasmBinaryFile) &&
-        // Don't use streaming for file:// delivered objects in a webview, fetch them synchronously.
-        !isFileURI(wasmBinaryFile) &&
-        // Avoid instantiateStreaming() on Node.js environment for now, as while
-        // Node.js v18.1.0 implements it, it does not have a full fetch()
-        // implementation yet.
-        //
-        // Reference:
-        //   https://github.com/emscripten-core/emscripten/pull/16917
-        !ENVIRONMENT_IS_NODE &&
-        typeof fetch == 'function') {
-      return fetch(wasmBinaryFile, { credentials: 'same-origin' }).then(function(response) {
-        // Suppress closure warning here since the upstream definition for
-        // instantiateStreaming only allows Promise<Repsponse> rather than
-        // an actual Response.
-        // TODO(https://github.com/google/closure-compiler/pull/3913): Remove if/when upstream closure is fixed.
-        /** @suppress {checkTypes} */
-        var result = WebAssembly.instantiateStreaming(response, info);
-
-        return result.then(
-          receiveInstantiationResult,
-          function(reason) {
-            // We expect the most common failure cause to be a bad MIME type for the binary,
-            // in which case falling back to ArrayBuffer instantiation should work.
-            err('wasm streaming compile failed: ' + reason);
-            err('falling back to ArrayBuffer instantiation');
-            return instantiateArrayBuffer(receiveInstantiationResult);
-          });
-      });
-    } else {
-      return instantiateArrayBuffer(receiveInstantiationResult);
-    }
-  }
-
   // User shell pages can write their own Module.instantiateWasm = function(imports, successCallback) callback
   // to manually instantiate the Wasm module themselves. This allows pages to run the instantiation parallel
   // to any other async startup actions they are performing.
   // Also pthreads and wasm workers initialize the wasm instance through this path.
   if (Module['instantiateWasm']) {
     try {
-      var exports = Module['instantiateWasm'](info, receiveInstance);
-      return exports;
+      return Module['instantiateWasm'](info, receiveInstance);
     } catch(e) {
       err('Module.instantiateWasm callback failed with error: ' + e);
         return false;
     }
   }
 
-  instantiateAsync();
+  instantiateAsync(wasmBinary, wasmBinaryFile, info, receiveInstantiationResult);
   return {}; // no exports yet; we'll fill them in later
 }
 
@@ -1222,11 +1095,105 @@ function createWasm() {
 var tempDouble;
 var tempI64;
 
+// include: runtime_debug.js
+function legacyModuleProp(prop, newName) {
+  if (!Object.getOwnPropertyDescriptor(Module, prop)) {
+    Object.defineProperty(Module, prop, {
+      configurable: true,
+      get: function() {
+        abort('Module.' + prop + ' has been replaced with plain ' + newName + ' (the initial value can be provided on Module, but after startup the value is only looked for on a local variable of that name)');
+      }
+    });
+  }
+}
+
+function ignoredModuleProp(prop) {
+  if (Object.getOwnPropertyDescriptor(Module, prop)) {
+    abort('`Module.' + prop + '` was supplied but `' + prop + '` not included in INCOMING_MODULE_JS_API');
+  }
+}
+
+// forcing the filesystem exports a few things by default
+function isExportedByForceFilesystem(name) {
+  return name === 'FS_createPath' ||
+         name === 'FS_createDataFile' ||
+         name === 'FS_createPreloadedFile' ||
+         name === 'FS_unlink' ||
+         name === 'addRunDependency' ||
+         // The old FS has some functionality that WasmFS lacks.
+         name === 'FS_createLazyFile' ||
+         name === 'FS_createDevice' ||
+         name === 'removeRunDependency';
+}
+
+function missingGlobal(sym, msg) {
+  if (typeof globalThis !== 'undefined') {
+    Object.defineProperty(globalThis, sym, {
+      configurable: true,
+      get: function() {
+        warnOnce('`' + sym + '` is not longer defined by emscripten. ' + msg);
+        return undefined;
+      }
+    });
+  }
+}
+
+missingGlobal('buffer', 'Please use HEAP8.buffer or wasmMemory.buffer');
+
+function missingLibrarySymbol(sym) {
+  if (typeof globalThis !== 'undefined' && !Object.getOwnPropertyDescriptor(globalThis, sym)) {
+    Object.defineProperty(globalThis, sym, {
+      configurable: true,
+      get: function() {
+        // Can't `abort()` here because it would break code that does runtime
+        // checks.  e.g. `if (typeof SDL === 'undefined')`.
+        var msg = '`' + sym + '` is a library symbol and not included by default; add it to your library.js __deps or to DEFAULT_LIBRARY_FUNCS_TO_INCLUDE on the command line';
+        // DEFAULT_LIBRARY_FUNCS_TO_INCLUDE requires the name as it appears in
+        // library.js, which means $name for a JS name with no prefix, or name
+        // for a JS name like _name.
+        var librarySymbol = sym;
+        if (!librarySymbol.startsWith('_')) {
+          librarySymbol = '$' + sym;
+        }
+        msg += " (e.g. -sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=" + librarySymbol + ")";
+        if (isExportedByForceFilesystem(sym)) {
+          msg += '. Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you';
+        }
+        warnOnce(msg);
+        return undefined;
+      }
+    });
+  }
+  // Any symbol that is not included from the JS libary is also (by definition)
+  // not exported on the Module object.
+  unexportedRuntimeSymbol(sym);
+}
+
+function unexportedRuntimeSymbol(sym) {
+  if (!Object.getOwnPropertyDescriptor(Module, sym)) {
+    Object.defineProperty(Module, sym, {
+      configurable: true,
+      get: function() {
+        var msg = "'" + sym + "' was not exported. add it to EXPORTED_RUNTIME_METHODS (see the FAQ)";
+        if (isExportedByForceFilesystem(sym)) {
+          msg += '. Alternatively, forcing filesystem support (-sFORCE_FILESYSTEM) can export this for you';
+        }
+        abort(msg);
+      }
+    });
+  }
+}
+
+// Used by XXXXX_DEBUG settings to output debug messages.
+function dbg(text) {
+  // TODO(sbc): Make this configurable somehow.  Its not always convenient for
+  // logging to show up as errors.
+  console.error(text);
+}
+
+// end include: runtime_debug.js
 // === Body ===
 
-var ASM_CONSTS = {
-  
-};
 function sapp_js_create_textfield() { const _sapp_inp = document.createElement("input"); _sapp_inp.type = "text"; _sapp_inp.id = "_sokol_app_input_element"; _sapp_inp.autocapitalize = "none"; _sapp_inp.addEventListener("focusout", function(_sapp_event) { __sapp_emsc_notify_keyboard_hidden() }); document.body.append(_sapp_inp); }
 function sapp_js_focus_textfield() { document.getElementById("_sokol_app_input_element").focus(); }
 function sapp_js_unfocus_textfield() { document.getElementById("_sokol_app_input_element").blur(); }
@@ -1249,6 +1216,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
 
 
 
+// end include: preamble.js
 
   /** @constructor */
   function ExitStatus(status) {
@@ -1270,20 +1238,19 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
      * @param {string} type
      */
   function getValue(ptr, type = 'i8') {
-      if (type.endsWith('*')) type = '*';
-      switch (type) {
-        case 'i1': return HEAP8[((ptr)>>0)];
-        case 'i8': return HEAP8[((ptr)>>0)];
-        case 'i16': return HEAP16[((ptr)>>1)];
-        case 'i32': return HEAP32[((ptr)>>2)];
-        case 'i64': return HEAP32[((ptr)>>2)];
-        case 'float': return HEAPF32[((ptr)>>2)];
-        case 'double': return HEAPF64[((ptr)>>3)];
-        case '*': return HEAPU32[((ptr)>>2)];
-        default: abort('invalid type for getValue: ' + type);
-      }
-      return null;
+    if (type.endsWith('*')) type = '*';
+    switch (type) {
+      case 'i1': return HEAP8[((ptr)>>0)];
+      case 'i8': return HEAP8[((ptr)>>0)];
+      case 'i16': return HEAP16[((ptr)>>1)];
+      case 'i32': return HEAP32[((ptr)>>2)];
+      case 'i64': return HEAP32[((ptr)>>2)];
+      case 'float': return HEAPF32[((ptr)>>2)];
+      case 'double': return HEAPF64[((ptr)>>3)];
+      case '*': return HEAPU32[((ptr)>>2)];
+      default: abort('invalid type for getValue: ' + type);
     }
+  }
 
   function ptrToString(ptr) {
       assert(typeof ptr === 'number');
@@ -1297,19 +1264,19 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
      * @param {string} type
      */
   function setValue(ptr, value, type = 'i8') {
-      if (type.endsWith('*')) type = '*';
-      switch (type) {
-        case 'i1': HEAP8[((ptr)>>0)] = value; break;
-        case 'i8': HEAP8[((ptr)>>0)] = value; break;
-        case 'i16': HEAP16[((ptr)>>1)] = value; break;
-        case 'i32': HEAP32[((ptr)>>2)] = value; break;
-        case 'i64': (tempI64 = [value>>>0,(tempDouble=value,(+(Math.abs(tempDouble))) >= 1.0 ? (tempDouble > 0.0 ? ((Math.min((+(Math.floor((tempDouble)/4294967296.0))), 4294967295.0))|0)>>>0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble)))>>>0))/4294967296.0)))))>>>0) : 0)],HEAP32[((ptr)>>2)] = tempI64[0],HEAP32[(((ptr)+(4))>>2)] = tempI64[1]); break;
-        case 'float': HEAPF32[((ptr)>>2)] = value; break;
-        case 'double': HEAPF64[((ptr)>>3)] = value; break;
-        case '*': HEAPU32[((ptr)>>2)] = value; break;
-        default: abort('invalid type for setValue: ' + type);
-      }
+    if (type.endsWith('*')) type = '*';
+    switch (type) {
+      case 'i1': HEAP8[((ptr)>>0)] = value; break;
+      case 'i8': HEAP8[((ptr)>>0)] = value; break;
+      case 'i16': HEAP16[((ptr)>>1)] = value; break;
+      case 'i32': HEAP32[((ptr)>>2)] = value; break;
+      case 'i64': (tempI64 = [value>>>0,(tempDouble=value,(+(Math.abs(tempDouble))) >= 1.0 ? (tempDouble > 0.0 ? ((Math.min((+(Math.floor((tempDouble)/4294967296.0))), 4294967295.0))|0)>>>0 : (~~((+(Math.ceil((tempDouble - +(((~~(tempDouble)))>>>0))/4294967296.0)))))>>>0) : 0)],HEAP32[((ptr)>>2)] = tempI64[0],HEAP32[(((ptr)+(4))>>2)] = tempI64[1]); break;
+      case 'float': HEAPF32[((ptr)>>2)] = value; break;
+      case 'double': HEAPF64[((ptr)>>3)] = value; break;
+      case '*': HEAPU32[((ptr)>>2)] = value; break;
+      default: abort('invalid type for setValue: ' + type);
     }
+  }
 
   function warnOnce(text) {
       if (!warnOnce.shown) warnOnce.shown = {};
@@ -1514,9 +1481,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
   function registerFocusEventCallback(target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) {
       if (!JSEvents.focusEvent) JSEvents.focusEvent = _malloc( 256 );
   
-      var focusEventHandlerFunc = function(ev) {
-        var e = ev || event;
-  
+      var focusEventHandlerFunc = function(e = event) {
         var nodeName = JSEvents.getNodeNameForTarget(e.target);
         var id = e.target.id ? e.target.id : '';
   
@@ -1646,9 +1611,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
       if (!JSEvents.mouseEvent) JSEvents.mouseEvent = _malloc( 72 );
       target = findEventTarget(target);
   
-      var mouseEventHandlerFunc = function(ev) {
-        var e = ev || event;
-  
+      var mouseEventHandlerFunc = function(e = event) {
         // TODO: Make this access thread safe, or this could update live while app is reading it.
         fillMouseEventData(JSEvents.mouseEvent, e, target);
   
@@ -1708,9 +1671,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
   function registerPointerlockChangeEventCallback(target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) {
       if (!JSEvents.pointerlockChangeEvent) JSEvents.pointerlockChangeEvent = _malloc( 260 );
   
-      var pointerlockChangeEventHandlerFunc = function(ev) {
-        var e = ev || event;
-  
+      var pointerlockChangeEventHandlerFunc = function(e = event) {
         var pointerlockChangeEvent = JSEvents.pointerlockChangeEvent;
         fillPointerlockChangeEventData(pointerlockChangeEvent);
   
@@ -1750,9 +1711,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
   
   function registerPointerlockErrorEventCallback(target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) {
   
-      var pointerlockErrorEventHandlerFunc = function(ev) {
-        var e = ev || event;
-  
+      var pointerlockErrorEventHandlerFunc = function(e = event) {
         if (getWasmTableEntry(callbackfunc)(eventTypeId, 0, userData)) e.preventDefault();
       };
   
@@ -1791,8 +1750,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
   
       target = findEventTarget(target);
   
-      var uiEventHandlerFunc = function(ev) {
-        var e = ev || event;
+      var uiEventHandlerFunc = function(e = event) {
         if (e.target != target) {
           // Never take ui events such as scroll via a 'bubbled' route, but always from the direct element that
           // was targeted. Otherwise e.g. if app logs a message in response to a page scroll, the Emscripten log
@@ -1934,9 +1892,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
   
   function __registerWebGlEventCallback(target, userData, useCapture, callbackfunc, eventTypeId, eventTypeString, targetThread) {
   
-      var webGlEventHandlerFunc = function(ev) {
-        var e = ev || event;
-  
+      var webGlEventHandlerFunc = function(e = event) {
         if (getWasmTableEntry(callbackfunc)(eventTypeId, 0, userData)) e.preventDefault();
       };
   
@@ -1967,8 +1923,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
       if (!JSEvents.wheelEvent) JSEvents.wheelEvent = _malloc( 104 );
   
       // The DOM Level 3 events spec event 'wheel'
-      var wheelHandlerFunc = function(ev) {
-        var e = ev || event;
+      var wheelHandlerFunc = function(e = event) {
         var wheelEvent = JSEvents.wheelEvent;
         fillMouseEventData(wheelEvent, e, target);
         HEAPF64[(((wheelEvent)+(72))>>3)] = e["deltaX"];
@@ -3510,6 +3465,21 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
 
   function _glViewport(x0, x1, x2, x3) { GLctx['viewport'](x0, x1, x2, x3) }
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   
   function _proc_exit(code) {
       EXITSTATUS = code;
@@ -3546,7 +3516,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
       checkStackCookie();
       if (e instanceof WebAssembly.RuntimeError) {
         if (_emscripten_stack_get_current() <= 0) {
-          err('Stack overflow detected.  You can try increasing -sSTACK_SIZE (currently set to ' + STACK_SIZE + ')');
+          err('Stack overflow detected.  You can try increasing -sSTACK_SIZE (currently set to ' + 65536 + ')');
         }
       }
       quit_(1, e);
@@ -3571,12 +3541,10 @@ var __miniTempWebGLIntBuffersStorage = new Int32Array(288);
   __miniTempWebGLIntBuffers[i] = __miniTempWebGLIntBuffersStorage.subarray(0, i+1);
   }
   ;
-var ASSERTIONS = true;
-
 function checkIncomingModuleAPI() {
   ignoredModuleProp('fetchSettings');
 }
-var asmLibraryArg = {
+var wasmImports = {
   "__assert_fail": ___assert_fail,
   "abort": _abort,
   "emscripten_get_device_pixel_ratio": _emscripten_get_device_pixel_ratio,
@@ -3709,16 +3677,12 @@ var asmLibraryArg = {
   "sapp_js_add_dragndrop_listeners": sapp_js_add_dragndrop_listeners,
   "sapp_js_clear_favicon": sapp_js_clear_favicon,
   "sapp_js_create_textfield": sapp_js_create_textfield,
-  "sapp_js_dropped_file_size": sapp_js_dropped_file_size,
-  "sapp_js_exit_pointerlock": sapp_js_exit_pointerlock,
-  "sapp_js_fetch_dropped_file": sapp_js_fetch_dropped_file,
   "sapp_js_focus_textfield": sapp_js_focus_textfield,
   "sapp_js_init": sapp_js_init,
   "sapp_js_remove_beforeunload_listener": sapp_js_remove_beforeunload_listener,
   "sapp_js_remove_clipboard_listener": sapp_js_remove_clipboard_listener,
   "sapp_js_remove_dragndrop_listeners": sapp_js_remove_dragndrop_listeners,
   "sapp_js_request_pointerlock": sapp_js_request_pointerlock,
-  "sapp_js_set_cursor": sapp_js_set_cursor,
   "sapp_js_set_favicon": sapp_js_set_favicon,
   "sapp_js_unfocus_textfield": sapp_js_unfocus_textfield,
   "sapp_js_write_clipboard": sapp_js_write_clipboard,
@@ -3726,99 +3690,214 @@ var asmLibraryArg = {
 };
 var asm = createWasm();
 /** @type {function(...*):?} */
-var ___wasm_call_ctors = Module["___wasm_call_ctors"] = createExportWrapper("__wasm_call_ctors");
-
+var ___wasm_call_ctors = createExportWrapper("__wasm_call_ctors");
 /** @type {function(...*):?} */
-var _malloc = Module["_malloc"] = createExportWrapper("malloc");
-
+var _malloc = createExportWrapper("malloc");
 /** @type {function(...*):?} */
-var _free = Module["_free"] = createExportWrapper("free");
-
+var _free = createExportWrapper("free");
 /** @type {function(...*):?} */
-var _saveSetjmp = Module["_saveSetjmp"] = createExportWrapper("saveSetjmp");
-
+var _saveSetjmp = createExportWrapper("saveSetjmp");
 /** @type {function(...*):?} */
-var ___errno_location = Module["___errno_location"] = createExportWrapper("__errno_location");
-
+var ___errno_location = createExportWrapper("__errno_location");
 /** @type {function(...*):?} */
 var _fflush = Module["_fflush"] = createExportWrapper("fflush");
-
 /** @type {function(...*):?} */
 var __sapp_emsc_notify_keyboard_hidden = Module["__sapp_emsc_notify_keyboard_hidden"] = createExportWrapper("_sapp_emsc_notify_keyboard_hidden");
-
 /** @type {function(...*):?} */
 var __sapp_emsc_onpaste = Module["__sapp_emsc_onpaste"] = createExportWrapper("_sapp_emsc_onpaste");
-
 /** @type {function(...*):?} */
 var __sapp_html5_get_ask_leave_site = Module["__sapp_html5_get_ask_leave_site"] = createExportWrapper("_sapp_html5_get_ask_leave_site");
-
 /** @type {function(...*):?} */
 var __sapp_emsc_begin_drop = Module["__sapp_emsc_begin_drop"] = createExportWrapper("_sapp_emsc_begin_drop");
-
 /** @type {function(...*):?} */
 var __sapp_emsc_drop = Module["__sapp_emsc_drop"] = createExportWrapper("_sapp_emsc_drop");
-
 /** @type {function(...*):?} */
 var __sapp_emsc_end_drop = Module["__sapp_emsc_end_drop"] = createExportWrapper("_sapp_emsc_end_drop");
-
 /** @type {function(...*):?} */
 var __sapp_emsc_invoke_fetch_cb = Module["__sapp_emsc_invoke_fetch_cb"] = createExportWrapper("_sapp_emsc_invoke_fetch_cb");
-
 /** @type {function(...*):?} */
 var _main = Module["_main"] = createExportWrapper("__main_argc_argv");
-
 /** @type {function(...*):?} */
-var ___dl_seterr = Module["___dl_seterr"] = createExportWrapper("__dl_seterr");
-
+var ___dl_seterr = createExportWrapper("__dl_seterr");
 /** @type {function(...*):?} */
-var _setThrew = Module["_setThrew"] = createExportWrapper("setThrew");
-
+var _setThrew = createExportWrapper("setThrew");
 /** @type {function(...*):?} */
-var _emscripten_stack_init = Module["_emscripten_stack_init"] = function() {
-  return (_emscripten_stack_init = Module["_emscripten_stack_init"] = Module["asm"]["emscripten_stack_init"]).apply(null, arguments);
+var _emscripten_stack_init = function() {
+  return (_emscripten_stack_init = Module["asm"]["emscripten_stack_init"]).apply(null, arguments);
 };
 
 /** @type {function(...*):?} */
-var _emscripten_stack_get_free = Module["_emscripten_stack_get_free"] = function() {
-  return (_emscripten_stack_get_free = Module["_emscripten_stack_get_free"] = Module["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
+var _emscripten_stack_get_free = function() {
+  return (_emscripten_stack_get_free = Module["asm"]["emscripten_stack_get_free"]).apply(null, arguments);
 };
 
 /** @type {function(...*):?} */
-var _emscripten_stack_get_base = Module["_emscripten_stack_get_base"] = function() {
-  return (_emscripten_stack_get_base = Module["_emscripten_stack_get_base"] = Module["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
+var _emscripten_stack_get_base = function() {
+  return (_emscripten_stack_get_base = Module["asm"]["emscripten_stack_get_base"]).apply(null, arguments);
 };
 
 /** @type {function(...*):?} */
-var _emscripten_stack_get_end = Module["_emscripten_stack_get_end"] = function() {
-  return (_emscripten_stack_get_end = Module["_emscripten_stack_get_end"] = Module["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
+var _emscripten_stack_get_end = function() {
+  return (_emscripten_stack_get_end = Module["asm"]["emscripten_stack_get_end"]).apply(null, arguments);
 };
 
 /** @type {function(...*):?} */
-var stackSave = Module["stackSave"] = createExportWrapper("stackSave");
-
+var stackSave = createExportWrapper("stackSave");
 /** @type {function(...*):?} */
-var stackRestore = Module["stackRestore"] = createExportWrapper("stackRestore");
-
+var stackRestore = createExportWrapper("stackRestore");
 /** @type {function(...*):?} */
-var stackAlloc = Module["stackAlloc"] = createExportWrapper("stackAlloc");
-
+var stackAlloc = createExportWrapper("stackAlloc");
 /** @type {function(...*):?} */
-var _emscripten_stack_get_current = Module["_emscripten_stack_get_current"] = function() {
-  return (_emscripten_stack_get_current = Module["_emscripten_stack_get_current"] = Module["asm"]["emscripten_stack_get_current"]).apply(null, arguments);
+var _emscripten_stack_get_current = function() {
+  return (_emscripten_stack_get_current = Module["asm"]["emscripten_stack_get_current"]).apply(null, arguments);
 };
 
 /** @type {function(...*):?} */
 var dynCall_jiji = Module["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
-
 var ___start_em_js = Module['___start_em_js'] = 137148;
 var ___stop_em_js = Module['___stop_em_js'] = 143076;
 
-
-
+// include: postamble.js
 // === Auto-generated postamble setup entry stuff ===
 
+var missingLibrarySymbols = [
+  'zeroMemory',
+  'emscripten_realloc_buffer',
+  'setErrNo',
+  'inetPton4',
+  'inetNtop4',
+  'inetPton6',
+  'inetNtop6',
+  'readSockaddr',
+  'writeSockaddr',
+  'getHostByName',
+  'getRandomDevice',
+  'traverseStack',
+  'convertPCtoSourceLocation',
+  'readEmAsmArgs',
+  'jstoi_s',
+  'getExecutableName',
+  'listenOnce',
+  'autoResumeAudioContext',
+  'dynCallLegacy',
+  'getDynCaller',
+  'dynCall',
+  'runtimeKeepalivePush',
+  'runtimeKeepalivePop',
+  'callUserCallback',
+  'maybeExit',
+  'safeSetTimeout',
+  'asmjsMangle',
+  'asyncLoad',
+  'alignMemory',
+  'mmapAlloc',
+  'HandleAllocator',
+  'getNativeTypeSize',
+  'STACK_SIZE',
+  'STACK_ALIGN',
+  'POINTER_SIZE',
+  'ASSERTIONS',
+  'writeI53ToI64Clamped',
+  'writeI53ToI64Signaling',
+  'writeI53ToU64Clamped',
+  'writeI53ToU64Signaling',
+  'convertI32PairToI53',
+  'convertU32PairToI53',
+  'getCFunc',
+  'ccall',
+  'cwrap',
+  'uleb128Encode',
+  'sigToWasmTypes',
+  'generateFuncType',
+  'convertJsFunctionToWasm',
+  'getEmptyTableSlot',
+  'updateTableMap',
+  'getFunctionAddress',
+  'addFunction',
+  'removeFunction',
+  'reallyNegative',
+  'unSign',
+  'strLen',
+  'reSign',
+  'formatString',
+  'intArrayFromString',
+  'intArrayToString',
+  'AsciiToString',
+  'stringToAscii',
+  'UTF16ToString',
+  'stringToUTF16',
+  'lengthBytesUTF16',
+  'UTF32ToString',
+  'stringToUTF32',
+  'lengthBytesUTF32',
+  'allocateUTF8',
+  'writeStringToMemory',
+  'writeArrayToMemory',
+  'writeAsciiToMemory',
+  'getSocketFromFD',
+  'getSocketAddress',
+  'fillDeviceOrientationEventData',
+  'registerDeviceOrientationEventCallback',
+  'fillDeviceMotionEventData',
+  'registerDeviceMotionEventCallback',
+  'screenOrientation',
+  'fillOrientationChangeEventData',
+  'registerOrientationChangeEventCallback',
+  'fillFullscreenChangeEventData',
+  'registerFullscreenChangeEventCallback',
+  'JSEvents_requestFullscreen',
+  'JSEvents_resizeCanvasForFullscreen',
+  'registerRestoreOldStyle',
+  'hideEverythingExceptGivenElement',
+  'restoreHiddenElements',
+  'setLetterbox',
+  'softFullscreenResizeWebGLRenderTarget',
+  'doRequestFullscreen',
+  'requestPointerLock',
+  'fillVisibilityChangeEventData',
+  'registerVisibilityChangeEventCallback',
+  'fillGamepadEventData',
+  'registerGamepadEventCallback',
+  'registerBeforeUnloadEventCallback',
+  'fillBatteryEventData',
+  'battery',
+  'registerBatteryEventCallback',
+  'setCanvasElementSize',
+  'getCanvasElementSize',
+  'demangle',
+  'demangleAll',
+  'jsStackTrace',
+  'stackTrace',
+  'getEnvStrings',
+  'checkWasiClock',
+  'createDyncallWrapper',
+  'setImmediateWrapped',
+  'clearImmediateWrapped',
+  'polyfillSetImmediate',
+  'getPromise',
+  'makePromise',
+  'makePromiseCallback',
+  'ExceptionInfo',
+  'exception_addRef',
+  'exception_decRef',
+  'setMainLoop',
+  '_setNetworkCallback',
+  'emscriptenWebGLGetUniform',
+  'emscriptenWebGLGetVertexAttrib',
+  'writeGLArray',
+  'SDL_unicode',
+  'SDL_ttfContext',
+  'SDL_audio',
+  'GLFW_Window',
+  'runAndAbortIfError',
+  'emscriptenWebGLGetIndexed',
+  'ALLOC_NORMAL',
+  'ALLOC_STACK',
+  'allocate',
+];
+missingLibrarySymbols.forEach(missingLibrarySymbol)
 
-var unexportedRuntimeSymbols = [
+var unexportedSymbols = [
   'run',
   'UTF8ArrayToString',
   'UTF8ToString',
@@ -3840,12 +3919,6 @@ var unexportedRuntimeSymbols = [
   'FS_createLink',
   'FS_createDevice',
   'FS_unlink',
-  'getLEB',
-  'getFunctionTables',
-  'alignFunctionTables',
-  'registerFunctions',
-  'prettyPrint',
-  'getCompilerSetting',
   'out',
   'err',
   'callMain',
@@ -3860,105 +3933,35 @@ var unexportedRuntimeSymbols = [
   'writeStackCookie',
   'checkStackCookie',
   'ptrToString',
-  'zeroMemory',
   'stringToNewUTF8',
   'exitJS',
   'getHeapMax',
   'abortOnCannotGrowMemory',
-  'emscripten_realloc_buffer',
   'ENV',
   'ERRNO_CODES',
   'ERRNO_MESSAGES',
-  'setErrNo',
-  'inetPton4',
-  'inetNtop4',
-  'inetPton6',
-  'inetNtop6',
-  'readSockaddr',
-  'writeSockaddr',
   'DNS',
-  'getHostByName',
   'Protocols',
   'Sockets',
-  'getRandomDevice',
+  'timers',
   'warnOnce',
-  'traverseStack',
   'UNWIND_CACHE',
-  'convertPCtoSourceLocation',
   'readEmAsmArgsArray',
-  'readEmAsmArgs',
-  'runEmAsmFunction',
-  'runMainThreadEmAsm',
   'jstoi_q',
-  'jstoi_s',
-  'getExecutableName',
-  'listenOnce',
-  'autoResumeAudioContext',
-  'dynCallLegacy',
-  'getDynCaller',
-  'dynCall',
   'handleException',
-  'runtimeKeepalivePush',
-  'runtimeKeepalivePop',
-  'callUserCallback',
-  'maybeExit',
-  'safeSetTimeout',
-  'asmjsMangle',
-  'asyncLoad',
-  'alignMemory',
-  'mmapAlloc',
-  'handleAllocator',
   'writeI53ToI64',
-  'writeI53ToI64Clamped',
-  'writeI53ToI64Signaling',
-  'writeI53ToU64Clamped',
-  'writeI53ToU64Signaling',
   'readI53FromI64',
   'readI53FromU64',
-  'convertI32PairToI53',
   'convertI32PairToI53Checked',
-  'convertU32PairToI53',
-  'getCFunc',
-  'ccall',
-  'cwrap',
-  'uleb128Encode',
-  'sigToWasmTypes',
-  'generateFuncType',
-  'convertJsFunctionToWasm',
   'freeTableIndexes',
   'functionsInTableMap',
-  'getEmptyTableSlot',
-  'updateTableMap',
-  'addFunction',
-  'removeFunction',
-  'reallyNegative',
-  'unSign',
-  'strLen',
-  'reSign',
-  'formatString',
   'setValue',
   'getValue',
   'PATH',
   'PATH_FS',
-  'intArrayFromString',
-  'intArrayToString',
-  'AsciiToString',
-  'stringToAscii',
   'UTF16Decoder',
-  'UTF16ToString',
-  'stringToUTF16',
-  'lengthBytesUTF16',
-  'UTF32ToString',
-  'stringToUTF32',
-  'lengthBytesUTF32',
-  'allocateUTF8',
   'allocateUTF8OnStack',
-  'writeStringToMemory',
-  'writeArrayToMemory',
-  'writeAsciiToMemory',
   'SYSCALLS',
-  'getSocketFromFD',
-  'getSocketAddress',
   'JSEvents',
   'registerKeyEventCallback',
   'specialHTMLTargets',
@@ -3971,71 +3974,26 @@ var unexportedRuntimeSymbols = [
   'registerWheelEventCallback',
   'registerUiEventCallback',
   'registerFocusEventCallback',
-  'fillDeviceOrientationEventData',
-  'registerDeviceOrientationEventCallback',
-  'fillDeviceMotionEventData',
-  'registerDeviceMotionEventCallback',
-  'screenOrientation',
-  'fillOrientationChangeEventData',
-  'registerOrientationChangeEventCallback',
-  'fillFullscreenChangeEventData',
-  'registerFullscreenChangeEventCallback',
-  'JSEvents_requestFullscreen',
-  'JSEvents_resizeCanvasForFullscreen',
-  'registerRestoreOldStyle',
-  'hideEverythingExceptGivenElement',
-  'restoreHiddenElements',
-  'setLetterbox',
   'currentFullscreenStrategy',
   'restoreOldWindowedStyle',
-  'softFullscreenResizeWebGLRenderTarget',
-  'doRequestFullscreen',
   'fillPointerlockChangeEventData',
   'registerPointerlockChangeEventCallback',
   'registerPointerlockErrorEventCallback',
-  'requestPointerLock',
-  'fillVisibilityChangeEventData',
-  'registerVisibilityChangeEventCallback',
   'registerTouchEventCallback',
-  'fillGamepadEventData',
-  'registerGamepadEventCallback',
-  'registerBeforeUnloadEventCallback',
-  'fillBatteryEventData',
-  'battery',
-  'registerBatteryEventCallback',
-  'setCanvasElementSize',
-  'getCanvasElementSize',
-  'demangle',
-  'demangleAll',
-  'jsStackTrace',
-  'stackTrace',
   'ExitStatus',
-  'getEnvStrings',
-  'checkWasiClock',
   'flush_NO_FILESYSTEM',
   'dlopenMissingError',
-  'createDyncallWrapper',
-  'setImmediateWrapped',
-  'clearImmediateWrapped',
-  'polyfillSetImmediate',
   'promiseMap',
-  'newNativePromise',
-  'getPromise',
   'uncaughtExceptionCount',
   'exceptionLast',
   'exceptionCaught',
-  'ExceptionInfo',
-  'exception_addRef',
-  'exception_decRef',
   'Browser',
-  'setMainLoop',
   'wget',
   'FS',
   'MEMFS',
   'TTY',
   'PIPEFS',
   'SOCKFS',
-  '_setNetworkCallback',
   'tempFixedLengthArray',
   'miniTempWebGLFloatBuffers',
   'heapObjectForWebGLType',
@@ -4044,162 +4002,20 @@ var unexportedRuntimeSymbols = [
   'emscriptenWebGLGet',
   'computeUnpackAlignedImageSize',
   'emscriptenWebGLGetTexPixelData',
-  'emscriptenWebGLGetUniform',
   'webglGetUniformLocation',
   'webglPrepareUniformLocationsBeforeFirstUse',
   'webglGetLeftBracePos',
-  'emscriptenWebGLGetVertexAttrib',
-  'writeGLArray',
   'AL',
-  'SDL_unicode',
-  'SDL_ttfContext',
-  'SDL_audio',
   'SDL',
   'SDL_gfx',
   'GLUT',
   'EGL',
-  'GLFW_Window',
   'GLFW',
   'GLEW',
   'IDBStore',
-  'runAndAbortIfError',
-  'emscriptenWebGLGetIndexed',
-  'ALLOC_NORMAL',
-  'ALLOC_STACK',
-  'allocate',
 ];
-unexportedRuntimeSymbols.forEach(unexportedRuntimeSymbol);
-var missingLibrarySymbols = [
-  'zeroMemory',
-  'emscripten_realloc_buffer',
-  'setErrNo',
-  'inetPton4',
-  'inetNtop4',
-  'inetPton6',
-  'inetNtop6',
-  'readSockaddr',
-  'writeSockaddr',
-  'getHostByName',
-  'getRandomDevice',
-  'traverseStack',
-  'convertPCtoSourceLocation',
-  'readEmAsmArgs',
-  'runEmAsmFunction',
-  'runMainThreadEmAsm',
-  'jstoi_s',
-  'getExecutableName',
-  'listenOnce',
-  'autoResumeAudioContext',
-  'dynCallLegacy',
-  'getDynCaller',
-  'dynCall',
-  'runtimeKeepalivePush',
-  'runtimeKeepalivePop',
-  'callUserCallback',
-  'maybeExit',
-  'safeSetTimeout',
-  'asmjsMangle',
-  'asyncLoad',
-  'alignMemory',
-  'mmapAlloc',
-  'handleAllocator',
-  'writeI53ToI64Clamped',
-  'writeI53ToI64Signaling',
-  'writeI53ToU64Clamped',
-  'writeI53ToU64Signaling',
-  'convertI32PairToI53',
-  'convertU32PairToI53',
-  'getCFunc',
-  'ccall',
-  'cwrap',
-  'uleb128Encode',
-  'sigToWasmTypes',
-  'generateFuncType',
-  'convertJsFunctionToWasm',
-  'getEmptyTableSlot',
-  'updateTableMap',
-  'addFunction',
-  'removeFunction',
-  'reallyNegative',
-  'unSign',
-  'strLen',
-  'reSign',
-  'formatString',
-  'intArrayFromString',
-  'intArrayToString',
-  'AsciiToString',
-  'stringToAscii',
-  'UTF16ToString',
-  'stringToUTF16',
-  'lengthBytesUTF16',
-  'UTF32ToString',
-  'stringToUTF32',
-  'lengthBytesUTF32',
-  'allocateUTF8',
-  'writeStringToMemory',
-  'writeArrayToMemory',
-  'writeAsciiToMemory',
-  'getSocketFromFD',
-  'getSocketAddress',
-  'fillDeviceOrientationEventData',
-  'registerDeviceOrientationEventCallback',
-  'fillDeviceMotionEventData',
-  'registerDeviceMotionEventCallback',
-  'screenOrientation',
-  'fillOrientationChangeEventData',
-  'registerOrientationChangeEventCallback',
-  'fillFullscreenChangeEventData',
-  'registerFullscreenChangeEventCallback',
-  'JSEvents_requestFullscreen',
-  'JSEvents_resizeCanvasForFullscreen',
-  'registerRestoreOldStyle',
-  'hideEverythingExceptGivenElement',
-  'restoreHiddenElements',
-  'setLetterbox',
-  'softFullscreenResizeWebGLRenderTarget',
-  'doRequestFullscreen',
-  'requestPointerLock',
-  'fillVisibilityChangeEventData',
-  'registerVisibilityChangeEventCallback',
-  'fillGamepadEventData',
-  'registerGamepadEventCallback',
-  'registerBeforeUnloadEventCallback',
-  'fillBatteryEventData',
-  'battery',
-  'registerBatteryEventCallback',
-  'setCanvasElementSize',
-  'getCanvasElementSize',
-  'demangle',
-  'demangleAll',
-  'jsStackTrace',
-  'stackTrace',
-  'getEnvStrings',
-  'checkWasiClock',
-  'createDyncallWrapper',
-  'setImmediateWrapped',
-  'clearImmediateWrapped',
-  'polyfillSetImmediate',
-  'newNativePromise',
-  'getPromise',
-  'ExceptionInfo',
-  'exception_addRef',
-  'exception_decRef',
-  'setMainLoop',
-  '_setNetworkCallback',
-  'emscriptenWebGLGetUniform',
-  'emscriptenWebGLGetVertexAttrib',
-  'writeGLArray',
-  'SDL_unicode',
-  'SDL_ttfContext',
-  'SDL_audio',
-  'GLFW_Window',
-  'runAndAbortIfError',
-  'emscriptenWebGLGetIndexed',
-  'ALLOC_NORMAL',
-  'ALLOC_STACK',
-  'allocate',
-];
-missingLibrarySymbols.forEach(missingLibrarySymbol)
+unexportedSymbols.forEach(unexportedRuntimeSymbol);
+
 
 
 var calledRun;
@@ -4210,13 +4026,12 @@ dependenciesFulfilled = function runCaller() {
   if (!calledRun) dependenciesFulfilled = runCaller; // try this again later, after new deps are fulfilled
 };
 
-function callMain(args) {
+function callMain(args = []) {
   assert(runDependencies == 0, 'cannot call main when async dependencies remain! (listen on Module["onRuntimeInitialized"])');
   assert(__ATPRERUN__.length == 0, 'cannot call main when preRun functions remain to be called');
 
-  var entryFunction = Module['_main'];
+  var entryFunction = _main;
 
-  args = args || [];
   args.unshift(thisProgram);
 
   var argc = args.length;
@@ -4231,8 +4046,6 @@ function callMain(args) {
 
     var ret = entryFunction(argc, argv);
 
-    // In PROXY_TO_PTHREAD builds, we should never exit the runtime below, as
-    // execution is asynchronously handed off to a pthread.
     // if we're not running an evented main loop, it's time to exit
     exitJS(ret, /* implicit = */ true);
     return ret;
@@ -4251,9 +4064,7 @@ function stackCheckInit() {
   writeStackCookie();
 }
 
-/** @type {function(Array=)} */
-function run(args) {
-  args = args || arguments_;
+function run(args = arguments_) {
 
   if (runDependencies > 0) {
     return;
@@ -4347,4 +4158,4 @@ if (Module['noInitialRun']) shouldRunNow = false;
 run();
 
 
-
+// end include: postamble.js

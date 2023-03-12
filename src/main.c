@@ -1,3 +1,7 @@
+#include "platform.h"
+#include "perlin.h"
+#include "vector.h"
+#include "bitmap.h"
 #define NK_INCLUDE_FIXED_TYPES
 #define NK_INCLUDE_STANDARD_IO
 #define NK_INCLUDE_DEFAULT_ALLOCATOR
@@ -7,10 +11,6 @@
 #define NK_INCLUDE_STANDARD_VARARGS
 #define NK_IMPLEMENTATION
 #include "nuklear.h"
-#include "bitmap.h"
-#include "maths.h"
-#include "perlin.h"
-#include "vector.h"
 #if !WEB_BUILD
 #include "filesystem.h"
 #include "lua.h"
@@ -25,6 +25,8 @@
 #include "sokol_glue.h"
 #include "sokol_nuklear.h"
 #include "default.glsl.h"
+#include "maths.h"
+
 
 #define DEFAULT_CANVAS_SIZE 512
 
@@ -59,7 +61,10 @@ static struct {
     Texture texture;
     float delta;
     bool update;
-    float zoom;
+    struct {
+        float zoom;
+        Vec2 position;
+    } camera;
     float scrollY;
 #if !WEB_BUILD
     const char **models;
@@ -180,7 +185,7 @@ void init(void) {
     state.texture = NewTexture(settings.canvasWidth, settings.canvasHeight);
     state.bitmap = NewBitmap(settings.canvasWidth, settings.canvasHeight);
     state.update = true;
-    state.zoom = 1.f;
+    state.camera.zoom = 1.f;
     
 #if !WEB_BUILD
     state.models = FindFiles("obj");
@@ -191,6 +196,7 @@ void init(void) {
     mtx_init(&state.luaStateLock, mtx_plain);
     
     dmon_init();
+    assert(DoesDirExist("assets"));
     dmon_watch("assets", WatchCallback, DMON_WATCHFLAGS_IGNORE_DIRECTORIES, NULL);
 #endif
     
@@ -240,7 +246,6 @@ void frame(void) {
             nk_property_int(ctx, "#Height:", 128, &tmp.canvasHeight, 1024, 16, 1);
             nk_tree_pop(ctx);
         }
-        
         if (nk_tree_push(ctx, NK_TREE_TAB, "Noise", NK_MAXIMIZED)) {
             nk_property_float(ctx, "#X:", 0.f, &tmp.xoff, FLT_MAX, 1.f, 1);
             nk_property_float(ctx, "#Y:", 0.f, &tmp.yoff, FLT_MAX, 1.f, 1);
@@ -287,7 +292,7 @@ void frame(void) {
     nk_end(ctx);
    
     if (!nk_window_is_any_hovered(ctx))
-        state.zoom = CLAMP(state.zoom + (state.scrollY * state.delta), .1f, 10.f);
+        state.camera.zoom = CLAMP(state.camera.zoom + (state.scrollY * state.delta), .1f, 10.f);
     
 #if !WEB_BUILD
     if (currentModel != state.currentModel) {
@@ -343,20 +348,19 @@ void frame(void) {
     if (state.update) {
         memcpy(&settings, &tmp, sizeof(Settings));
         unsigned char *heightmap = PerlinFBM(settings.canvasWidth, settings.canvasHeight, settings.zoff, settings.xoff, settings.yoff, settings.scale, settings.lacunarity, settings.gain, settings.octaves);
+#if !WEB_BUILD
+        if (state.currentScript != 0) {
+            mtx_lock(&state.luaStateLock);
+            LuaCallFrame(state.luaState, heightmap, settings.canvasWidth, settings.canvasHeight);
+            mtx_unlock(&state.luaStateLock);
+        }
+#endif
         for (int x = 0; x < settings.canvasWidth; x++)
             for (int y = 0; y < settings.canvasHeight; y++) {
                 int i = y * settings.canvasWidth + x;
                 unsigned char h = heightmap[i];
                 state.bitmap.buf[i] = RGB(h, h, h);
             }
-        
-#if !WEB_BUILD
-        if (state.currentScript != 0) {
-            mtx_lock(&state.luaStateLock);
-            LuaCallFrame(state.luaState, &state.bitmap);
-            mtx_unlock(&state.luaStateLock);
-        }
-#endif
         
         sg_update_image(state.texture, &(sg_image_data) {
             .subimage[0][0] = {
@@ -381,7 +385,7 @@ void frame(void) {
     };
     Vec2 v = (Vec2){2.f,-2.f} / viewport;
     for (int j = 0; j < 4; j++)
-        quad[j] = (v * quad[j] + (Vec2){-1.f, 1.f}) * state.zoom;
+        quad[j] = (v * quad[j] + (Vec2){-1.f, 1.f}) * state.camera.zoom;
     
     static const Vec2 vtexquad[4] = {
         {0.f, 1.f}, // bottom left

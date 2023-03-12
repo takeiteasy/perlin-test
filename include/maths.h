@@ -11,10 +11,10 @@
 
 #define PHI 1.618033988749895f
 
-#if !defined(MIN)
+#ifndef MIN
 #define MIN(a, b) (a < b ? a : b)
 #endif
-#if !defined(MAX)
+#ifndef MAX
 #define MAX(a, b) (a > b ? a : b)
 #endif
 #define CLAMP(n, min, max) (MIN(MAX(n, min), max))
