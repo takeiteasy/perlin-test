@@ -1,4 +1,4 @@
-@vs default_vs
+@vs default2d_vs
 in vec4 position;
 in vec2 texcoord;
 
@@ -10,7 +10,7 @@ void main() {
 }
 @end
 
-@fs default_fs
+@fs default2d_fs
 uniform sampler2D tex;
 in vec2 uv;
 
@@ -21,4 +21,4 @@ void main() {
 }
 @end
 
-@program default_program default_vs default_fs
+@program default2d_program default2d_vs default2d_fs

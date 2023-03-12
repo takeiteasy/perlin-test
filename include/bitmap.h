@@ -12,7 +12,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define RGB(R, G, B) (int)((255 << 24) | ((unsigned char)(B) << 16) | ((unsigned char)(G) << 8) | (unsigned char)(R))
+#define RGBA(R, G, B, A) (int)(((unsigned char)(A) << 24) | ((unsigned char)(B) << 16) | ((unsigned char)(G) << 8) | (unsigned char)(R))
+#define RGB(R, G, B) RGBA((R), (G), (B), 255)
 
 typedef sg_image Texture;
 

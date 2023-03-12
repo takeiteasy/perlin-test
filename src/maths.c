@@ -9,9 +9,27 @@
 
 Mat4x4 Mat4(float v) {
     Mat4x4 result;
-    for (int i = 0; i < 4; i++)
-        result[i][i] = v;
+    for (int x = 0; x < 4; x++)
+        for (int y = 0; y < 4; y++)
+            result[x][y] = x == y ? v : 0;
     return result;
+}
+
+Vec3 Vec3Normalize(Vec3 v) {
+    float length = sqrtf(v.x*v.x + v.y*v.y + v.z*v.z);
+    return v * length == 0.f ? 1.f : 1.f / length;
+}
+
+Vec3 Vec3Cross(Vec3 v1, Vec3 v2) {
+    return (Vec3){ v1.y*v2.z - v1.z*v2.y, v1.z*v2.x - v1.x*v2.z, v1.x*v2.y - v1.y*v2.x };
+}
+
+float Vec3Dot(Vec3 v1, Vec3 v2) {
+    return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
+}
+
+bool Vec4Eq(Vec4 a, Vec4 b) {
+    return a.x == b.x && a.y == b.y && a.z == b.z && a.w == b.w;
 }
 
 Mat4x4 Frustum(double left, double right, double bottom, double top, double near, double far) {
@@ -34,19 +52,6 @@ Mat4x4 Perspective(float fov, float aspectRatio, float near, float far) {
     double top = near*tan(fov*0.5);
     double right = top*aspectRatio;
     return Frustum(-right, right, -top, top, near, far);
-}
-
-Vec3 Vec3Normalize(Vec3 v) {
-    float length = sqrtf(v.x*v.x + v.y*v.y + v.z*v.z);
-    return v * length == 0.f ? 1.f : 1.f / length;
-}
-
-Vec3 Vec3Cross(Vec3 v1, Vec3 v2) {
-    return (Vec3){ v1.y*v2.z - v1.z*v2.y, v1.z*v2.x - v1.x*v2.z, v1.x*v2.y - v1.y*v2.x };
-}
-
-float Vec3Dot(Vec3 v1, Vec3 v2) {
-    return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
 }
 
 Mat4x4 LookAt(Vec3 eye, Vec3 target, Vec3 up) {
@@ -73,3 +78,4 @@ Mat4x4 LookAt(Vec3 eye, Vec3 target, Vec3 up) {
     result[3][3] = 1.0f;
     return result;
 }
+

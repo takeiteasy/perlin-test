@@ -16,8 +16,9 @@
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_nuklear.h"
-#include "default.glsl.h"
+#include "default2d.glsl.h"
 #include "maths.h"
+#include "default3d.glsl.h"
 #if !WEB_BUILD
 #include "filesystem.h"
 #include "lua.h"
@@ -25,6 +26,8 @@
 #include "dmon.h"
 #define THREADS_IMPL
 #include "threads.h"
+#define JIM_IMPLEMENTATION
+#include "jim.h"
 #endif
 
 #define DEFAULT_CANVAS_SIZE 512
@@ -51,21 +54,44 @@ static Settings settings = {
 #undef X
 };
 
+typedef struct {
+    Vec4 color;
+    float max;
+    int index;
+} BiomeData;
+
+typedef struct biome {
+    BiomeData data;
+    struct biome *next;
+} Biome;
+
+typedef struct {
+    int count, tally;
+    Biome *head, *tail;
+} BiomeTree;
+
 static struct {
     sg_pass_action pass_action;
-    sg_pipeline pipeline;
-    sg_bindings binding;
     Vertex vertices[6];
     Bitmap bitmap;
     Texture texture;
     float delta;
     bool update;
     bool dragging;
-    Vec2 mouseDelta;
+    Vec2 lastMousePos, mousePos;
+    int enableBiomes;
+    BiomeTree biomes;
     struct {
         float zoom;
         Vec2 position;
-    } camera;
+        sg_pipeline pipeline;
+        sg_bindings binding;
+    } camera2d;
+    struct {
+        Vec3 position, target, up;
+        sg_pipeline pipeline;
+        sg_bindings binding;
+    } camera3d;
     float scrollY;
 #if !WEB_BUILD
     const char **models;
@@ -186,10 +212,11 @@ void init(void) {
     state.texture = NewTexture(settings.canvasWidth, settings.canvasHeight);
     state.bitmap = NewBitmap(settings.canvasWidth, settings.canvasHeight);
     state.update = true;
-    state.camera.zoom = 1.f;
-    state.camera.position = (Vec2){0.f, 0.f};
+    state.camera2d.zoom = 1.f;
+    state.camera2d.position = (Vec2){0.f, 0.f};
     state.dragging = false;
-    state.mouseDelta = (Vec2){0.f, 0.f};
+    state.lastMousePos = state.mousePos = (Vec2){0.f,0.f};
+    state.enableBiomes = 0;
     
 #if !WEB_BUILD
     state.models = FindFiles("obj");
@@ -204,25 +231,115 @@ void init(void) {
     dmon_watch("assets", WatchCallback, DMON_WATCHFLAGS_IGNORE_DIRECTORIES, NULL);
 #endif
     
-    state.pipeline = sg_make_pipeline(&(sg_pipeline_desc) {
+    state.camera2d.pipeline = sg_make_pipeline(&(sg_pipeline_desc) {
         .primitive_type = SG_PRIMITIVETYPE_TRIANGLES,
-        .shader = sg_make_shader(default_program_shader_desc(sg_query_backend())),
+        .shader = sg_make_shader(default2d_program_shader_desc(sg_query_backend())),
         .layout = {
             .buffers[0].stride = sizeof(Vertex),
             .attrs = {
-                [ATTR_default_vs_position].format=SG_VERTEXFORMAT_FLOAT4,
-                [ATTR_default_vs_texcoord].format=SG_VERTEXFORMAT_FLOAT2
+                [ATTR_default2d_vs_position].format=SG_VERTEXFORMAT_FLOAT4,
+                [ATTR_default2d_vs_texcoord].format=SG_VERTEXFORMAT_FLOAT2
             }
         }
     });
     
-    state.binding = (sg_bindings) {
+    state.camera2d.binding = (sg_bindings) {
         .fs_images[SLOT_tex] = state.texture,
         .vertex_buffers[0] = sg_make_buffer(&(sg_buffer_desc) {
             .usage = SG_USAGE_STREAM,
             .size = 6 * sizeof(Vertex)
         })
     };
+}
+
+
+static void SwapBiomes(Biome *a, Biome *b) {
+    BiomeData tmp;
+    memcpy(&tmp, &a->data, sizeof(BiomeData));
+    memcpy(&a->data, &b->data, sizeof(BiomeData));
+    memcpy(&b->data, &tmp, sizeof(BiomeData));
+}
+
+static void SortBiomes(void) {
+    Biome *cursor = state.biomes.head;
+    Biome *tmp = NULL;
+    while (cursor) {
+        tmp = cursor->next;
+        while (tmp) {
+            if (cursor->data.max > tmp->data.max)
+                SwapBiomes(cursor, tmp);
+            tmp = tmp->next;
+        }
+        cursor = cursor->next;
+    }
+}
+
+static Biome* AddNewBiome(void) {
+    Biome *result = malloc(sizeof(Biome));
+    result->data = (BiomeData) {
+        .color = (Vec4){0.f,0.f,0.f,1.f},
+        .max   = 0.f,
+        .index = ++state.biomes.tally
+    };
+    result->next  = NULL;
+    state.biomes.count++;
+    if (!state.biomes.head)
+        state.biomes.head = state.biomes.tail = result;
+    else
+        state.biomes.tail = state.biomes.tail->next = result;
+    SortBiomes();
+    return state.biomes.tail;
+}
+
+static void RemoveBiome(Biome *biome) {
+    Biome *cursor = state.biomes.head, *prev = NULL;
+    while (cursor) {
+        if (cursor->data.index == biome->data.index) {
+            if (!prev)
+                state.biomes.head = cursor->next;
+            else
+                prev->next = cursor->next;
+            state.biomes.count--;
+            free(cursor);
+            break;
+        }
+        prev = cursor;
+        cursor = cursor->next;
+    }
+}
+
+static int ColorToRGB(Vec4 color) {
+    return RGBA((int)(color.x * 255.f), (int)(color.y * 255.f), (int)(color.z * 255.f), (int)(color.w * 255));
+}
+
+static void ExportBiomes(const char *path) {
+    FILE *fh = fopen(path, "w");
+    Jim jim = {
+        .sink = fh,
+        .write = (Jim_Write)fwrite
+    };
+    jim_object_begin(&jim);
+    jim_member_key(&jim, "biomes");
+    jim_array_begin(&jim);
+    Biome *cursor = state.biomes.head;
+    while (cursor) {
+        jim_object_begin(&jim);
+        jim_member_key(&jim, "r");
+        jim_integer(&jim, (long long)(cursor->data.color.x * 255.f));
+        jim_member_key(&jim, "g");
+        jim_integer(&jim, (long long)(cursor->data.color.y * 255.f));
+        jim_member_key(&jim, "b");
+        jim_integer(&jim, (long long)(cursor->data.color.z * 255.f));
+        jim_member_key(&jim, "a");
+        jim_integer(&jim, (long long)(cursor->data.color.w * 255.f));
+        jim_member_key(&jim, "max");
+        jim_float(&jim, (double)cursor->data.max, 2);
+        jim_object_end(&jim);
+        cursor = cursor->next;
+    }
+    jim_array_end(&jim);
+    jim_object_end(&jim);
+    fclose(fh);
 }
 
 void frame(void) {
@@ -266,6 +383,57 @@ void frame(void) {
                 resetValues = true;
             nk_tree_pop(ctx);
         }
+        if (nk_tree_push(ctx, NK_TREE_TAB, "Biomes", NK_MINIMIZED)) {
+            bool lastEnabled = state.enableBiomes;
+            nk_checkbox_label(ctx, "Enable biomes", &state.enableBiomes);
+            if (state.enableBiomes != lastEnabled)
+                state.update = true;
+            if (state.enableBiomes) {
+                Biome *cursor = state.biomes.head;
+                while (cursor) {
+                    bool removed = false;
+                    Vec4 lastColor = cursor->data.color;
+                    float lastMax = cursor->data.max;
+                    struct nk_colorf color = (struct nk_colorf){cursor->data.color.x,cursor->data.color.y,cursor->data.color.z,cursor->data.color.w};
+                    if (nk_combo_begin_color(ctx, nk_rgba_cf(color), nk_vec2(200,400))) {
+                        nk_layout_row_dynamic(ctx, 120, 1);
+                        color = nk_color_picker(ctx, color, NK_RGBA);
+                        
+                        nk_layout_row_dynamic(ctx, 25, 1);
+                        color.r = nk_propertyf(ctx, "#R:", 0, color.r, 1.f, .01f, .005f);
+                        color.g = nk_propertyf(ctx, "#G:", 0, color.g, 1.f, .01f, .005f);
+                        color.b = nk_propertyf(ctx, "#B:", 0, color.b, 1.f, .01f, .005f);
+                        color.a = nk_propertyf(ctx, "#A:", 0, color.a, 1.f, .01f, .005f);
+                        cursor->data.color = (Vec4){color.r, color.g, color.b, color.a};
+                        cursor->data.max = nk_propertyf(ctx, "#Max:", 0, cursor->data.max, 1.f, .01f, .005f);
+                        if (!Vec4Eq(lastColor, cursor->data.color) || lastMax != cursor->data.max)
+                            state.update = true;
+                        if (nk_button_label(ctx, "Remove Biome")) {
+                            RemoveBiome(cursor);
+                            removed = true;
+                            state.update = true;
+                            nk_combo_close(ctx);
+                        }
+                        nk_combo_end(ctx);
+                    }
+                    if (!removed)
+                        cursor = cursor->next;
+                }
+                
+                if (nk_button_label(ctx, "Add Biome")) {
+                    AddNewBiome();
+                    state.update = true;
+                }
+                if (nk_button_label(ctx, "Export Biomes") && state.biomes.head) {
+                    char path[256];
+                    time_t raw = time(NULL);
+                    struct tm *t = localtime(&raw);
+                    strftime(path, 256, "Biomes %G-%m-%d at %H.%M.%S.json", t);
+                    ExportBiomes(path);
+                }
+            }
+            nk_tree_pop(ctx);
+        }
 #if !WEB_BUILD
         if (nk_tree_push(ctx, NK_TREE_TAB, "Script", NK_MINIMIZED)) {
             int scriptCount = 1 + (state.scripts ? VectorCount(state.scripts) : 0);
@@ -273,15 +441,6 @@ void frame(void) {
             defaultScripts[0] = "Default (Nothing)";
             memcpy(defaultScripts + 1, state.scripts, VectorCount(state.scripts) * sizeof(const char*));
             currentScript = nk_combo(ctx, defaultScripts, scriptCount, currentScript, 20, nk_vec2(200, 200));
-            nk_tree_pop(ctx);
-        }
-        if (nk_tree_push(ctx, NK_TREE_TAB, "Target", NK_MINIMIZED)) {
-            int modelCount = 2 + (state.models ? VectorCount(state.models) : 0);
-            const char* defaultModels[modelCount];
-            defaultModels[0] = "Default (2D)";
-            defaultModels[1] = "Heightmap";
-            memcpy(defaultModels + 2, state.models, VectorCount(state.models) * sizeof(const char*));
-            currentModel = nk_combo(ctx, defaultModels, modelCount, currentModel, 20, nk_vec2(200, 200));
             nk_tree_pop(ctx);
         }
         if (nk_button_label(ctx, "Export")) {
@@ -296,10 +455,10 @@ void frame(void) {
     nk_end(ctx);
    
     if (!nk_window_is_any_hovered(ctx)) {
-        state.camera.zoom = CLAMP(state.camera.zoom + (state.scrollY * state.delta), .1f, 10.f);
+        state.camera2d.zoom = CLAMP(state.camera2d.zoom + (state.scrollY * state.delta), .1f, 10.f);
         
         if (state.dragging)
-            state.camera.position += state.mouseDelta;
+            state.camera2d.position -= state.lastMousePos - state.mousePos;
     }
     
 #if !WEB_BUILD
@@ -340,18 +499,15 @@ void frame(void) {
         state.bitmap = NewBitmap(settings.canvasWidth, settings.canvasHeight);
         DestroyTexture(state.texture);
         state.texture = NewTexture(settings.canvasWidth, settings.canvasHeight);
-        state.binding.fs_images[SLOT_tex] = state.texture;
+        state.camera2d.binding.fs_images[SLOT_tex] = state.texture;
         state.update = true;
     }
     
-    if (tmp.xoff != settings.xoff ||
-        tmp.yoff != settings.yoff ||
-        tmp.zoff != settings.zoff ||
-        tmp.scale != settings.scale ||
-        tmp.lacunarity != settings.lacunarity ||
-        tmp.gain != settings.gain ||
-        tmp.octaves != settings.octaves)
+#define X(TYPE, NAME, DEFAULT)                      \
+    if (!state.update && tmp.NAME != settings.NAME) \
         state.update = true;
+    SETTINGS
+#undef X
     
     if (state.update) {
         memcpy(&settings, &tmp, sizeof(Settings));
@@ -363,11 +519,31 @@ void frame(void) {
             mtx_unlock(&state.luaStateLock);
         }
 #endif
+        if (state.enableBiomes)
+            SortBiomes();
         for (int x = 0; x < settings.canvasWidth; x++)
             for (int y = 0; y < settings.canvasHeight; y++) {
                 int i = y * settings.canvasWidth + x;
                 unsigned char h = heightmap[i];
-                state.bitmap.buf[i] = RGB(h, h, h);
+                if (state.enableBiomes && state.biomes.head) {
+                    Biome *cursor = state.biomes.head, *prev = NULL;
+                    bool found = false;
+                    while (cursor) {
+                        if (h <= (unsigned char)(cursor->data.max * 255.f)) {
+                            if (prev)
+                                state.bitmap.buf[i] = ColorToRGB(cursor->data.color);
+                            else
+                                state.bitmap.buf[i] = ColorToRGB(state.biomes.head->data.color);
+                            found = true;
+                            break;
+                        }
+                        prev = cursor;
+                        cursor = cursor->next;
+                    }
+                    if (!found)
+                        state.bitmap.buf[i] = RGB(h, h, h);
+                } else
+                    state.bitmap.buf[i] = RGB(h, h, h);
             }
         
         sg_update_image(state.texture, &(sg_image_data) {
@@ -380,11 +556,11 @@ void frame(void) {
     }
     
     sg_begin_default_pass(&state.pass_action, sapp_width(), sapp_height());
-    sg_apply_pipeline(state.pipeline);
+    sg_apply_pipeline(state.camera2d.pipeline);
     
     Vec2 size = {settings.canvasWidth, settings.canvasHeight};
     Vec2 viewport = {sapp_width(), sapp_height()};
-    Vec2 position = state.camera.position + (viewport / 2.f) - (size / 2.f);
+    Vec2 position = state.camera2d.position + (viewport / 2.f) - (size / 2.f);
     Vec2 quad[4] = {
         {position.x, position.y + size.y}, // bottom left
         position + size, // bottom right
@@ -393,7 +569,7 @@ void frame(void) {
     };
     Vec2 v = (Vec2){2.f,-2.f} / viewport;
     for (int j = 0; j < 4; j++)
-        quad[j] = (v * quad[j] + (Vec2){-1.f, 1.f}) * state.camera.zoom;
+        quad[j] = (v * quad[j] + (Vec2){-1.f, 1.f}) * state.camera2d.zoom;
     
     static const Vec2 vtexquad[4] = {
         {0.f, 1.f}, // bottom left
@@ -411,18 +587,19 @@ void frame(void) {
             .texcoord = vtexquad[indices[i]]
         };
     
-    sg_update_buffer(state.binding.vertex_buffers[0], &(sg_range) {
+    sg_update_buffer(state.camera2d.binding.vertex_buffers[0], &(sg_range) {
         .ptr = state.vertices,
         .size = 6 * sizeof(Vertex)
     });
-    sg_apply_bindings(&state.binding);
-    
+    sg_apply_bindings(&state.camera2d.binding);
     sg_draw(0, 6, 1);
+    
     snk_render(sapp_width(), sapp_height());
     sg_end_pass();
     
     sg_commit();
     state.scrollY = 0.f;
+    state.lastMousePos = state.mousePos;
 }
 
 void event(const sapp_event *e) {
@@ -447,7 +624,7 @@ void event(const sapp_event *e) {
             state.dragging = e->mouse_button == SAPP_MOUSEBUTTON_LEFT && e->type == SAPP_EVENTTYPE_MOUSE_DOWN;
             break;
         case SAPP_EVENTTYPE_MOUSE_MOVE:
-            state.mouseDelta = (Vec2){e->mouse_dx, e->mouse_dy};
+            state.mousePos = (Vec2){e->mouse_x, e->mouse_y};
             break;
         default:
             break;
@@ -464,6 +641,12 @@ void cleanup(void) {
     DestroyVector(state.scripts);
     dmon_deinit();
 #endif
+    Biome *cursor = state.biomes.head;
+    while (cursor) {
+        Biome *tmp = cursor->next;
+        free(cursor);
+        cursor = tmp;
+    }
     DestroyBitmap(&state.bitmap);
     snk_shutdown();
     sg_shutdown();

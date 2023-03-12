@@ -3,12 +3,15 @@
 Simple tool to play with Perlin noise in real time. **WIP**.
 
 <p align="center">
-    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/screenshot.png"/>
+    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/screenshotB.png"/>
+    <img src="https://github.com/takeiteasy/perlin-tool/raw/master/assets/screenshotA.png"/>
 </p>
 
 ## Build
 
-To build, first run ```bootstrap.sh``` (this downloads dependency headers and the sokol shader build tools) then run ```make```. The binary will be inside the ```build/``` directory. Only tested on Mac but should build on Windows (requires clang in PATH) and Linux out of the box. If you're on Mac, you can also build the Xcode project with [Xcodegen](https://github.com/yonaskolb/XcodeGen).
+To build, first run ```bootstrap.sh``` (this downloads dependency headers and the sokol shader build tools) then run ```make```. The binary will be inside the ```build/``` directory. Only tested on Mac but should build on Windows and Linux out of the box. If you're on Mac, you can also build the Xcode project with [Xcodegen](https://github.com/yonaskolb/XcodeGen).
+
+**NOTE**: This program requires either clang or gcc to build. It won't build under MSVC or older compilers.
 
 Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-tool/). **NOTE**: The web version is missing some features.
 
@@ -20,7 +23,7 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
 - [X] ~~Hotreloading for assets~~
 - [ ] Error handling for assets
 - [ ] Touch controls
-- [ ] Biome controls
+- [X] ~~Biome controls~~
 - [ ] Config file + args
 
 ## Dependencies
@@ -48,6 +51,8 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
     - dirent_win32.h
 - [yohhoy/threads.h](https://gist.github.com/yohhoy/2223710) (Boost)
     - threads.h ([modified](https://gist.github.com/takeiteasy/f04ccebdaed5a9f554b99e7b4456198e))
+- [tsoding/jim](https://github.com/tsoding/jim) (MIT)
+    - jim.h
 
 ## License
 ```
