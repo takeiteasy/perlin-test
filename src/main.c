@@ -28,6 +28,10 @@
 #include "threads.h"
 #define JIM_IMPLEMENTATION
 #include "jim.h"
+#define MJSON_IMPLEMENTATION
+#include "mjson.h"
+#define OSDIALOG_IMPLEMENTATION
+#include "osdialog.h"
 #endif
 
 #define DEFAULT_CANVAS_SIZE 512
@@ -274,21 +278,27 @@ static void SortBiomes(void) {
     }
 }
 
-static Biome* AddNewBiome(void) {
+#define MAX_BIOMES 16
+
+static void AddNewBiome(Vec4 color, float max) {
+    if (state.biomes.count >= MAX_BIOMES)
+        return;
+    
     Biome *result = malloc(sizeof(Biome));
     result->data = (BiomeData) {
-        .color = (Vec4){0.f,0.f,0.f,1.f},
-        .max   = 0.f,
+        .color = color,
+        .max   = max,
         .index = ++state.biomes.tally
     };
     result->next  = NULL;
+    
     state.biomes.count++;
     if (!state.biomes.head)
         state.biomes.head = state.biomes.tail = result;
     else
         state.biomes.tail = state.biomes.tail->next = result;
+    
     SortBiomes();
-    return state.biomes.tail;
 }
 
 static void RemoveBiome(Biome *biome) {
@@ -310,6 +320,15 @@ static void RemoveBiome(Biome *biome) {
 
 static int ColorToRGB(Vec4 color) {
     return RGBA((int)(color.x * 255.f), (int)(color.y * 255.f), (int)(color.z * 255.f), (int)(color.w * 255));
+}
+
+static void DestroyBiomes(void) {
+    Biome *cursor = state.biomes.head;
+    while (cursor) {
+        Biome *tmp = cursor->next;
+        free(cursor);
+        cursor = tmp;
+    }
 }
 
 #if !WEB_BUILD
@@ -343,6 +362,42 @@ static void ExportBiomes(const char *path) {
     fclose(fh);
 }
 
+static void LoadBiomes(const char *path) {
+    if (state.biomes.head)
+        DestroyBiomes();
+    
+    int colorR[MAX_BIOMES];
+    int colorG[MAX_BIOMES];
+    int colorB[MAX_BIOMES];
+    int colorA[MAX_BIOMES];
+    double max[MAX_BIOMES];
+    const struct json_attr_t biome_attr[] = {
+        {"r", t_integer, .addr.integer=colorR},
+        {"g", t_integer, .addr.integer=colorG},
+        {"b", t_integer, .addr.integer=colorB},
+        {"a", t_integer, .addr.integer=colorA},
+        {"max", t_real, .addr.real=max},
+        {NULL}
+    };
+    int biomeCount = 0;
+    const struct json_attr_t root_attr[] = {
+        {"biomes", t_array, .addr.array.element_type=t_object,
+                            .addr.array.arr.objects.subtype=biome_attr,
+                            .addr.array.maxlen=MAX_BIOMES,
+                            .addr.array.count=&biomeCount},
+        {NULL}
+    };
+    
+    char *json = LoadFile(path, NULL);
+    assert(json);
+    int status = json_read_object(json, root_attr, NULL);
+    assert(!status);
+    assert(biomeCount);
+    
+    for (int i = 0; i < biomeCount; i++)
+        AddNewBiome((Vec4){(float)colorR[i] / 255.f, (float)colorG[i] / 255.f, (float)colorB[i] / 255.f, (float)colorA[i] / 255.f}, max[i]);
+}
+
 static void ExportSettings(const char *path) {
     FILE *fh = fopen(path, "w");
     Jim jim = {
@@ -360,6 +415,36 @@ static void ExportSettings(const char *path) {
     jim_object_end(&jim);
     jim_object_end(&jim);
     fclose(fh);
+}
+
+static void LoadSettings(const char *path, Settings *out) {
+    struct {
+#define X(TYPE, NAME, DEFAULT) double NAME;
+        SETTINGS
+#undef X
+    } tmp;
+    
+    const struct json_attr_t settings_attr[] = {
+#define X(TYPE, NAME, DEFAULT) { #NAME, t_real, .addr.real=&tmp.NAME },
+        SETTINGS
+#undef X
+        {NULL}
+    };
+    const struct json_attr_t root_attr[] = {
+        {"perlin", t_object, .addr.attrs=settings_attr},
+        {NULL}
+    };
+    
+    char *json = LoadFile(path, NULL);
+    assert(json);
+    int status = json_read_object(json, root_attr, NULL);
+    assert(!status);
+    
+#define X(TYPE, NAME, DEFAULT) out->NAME = (TYPE)tmp.NAME;
+    SETTINGS
+#undef X
+    
+    free(json);
 }
 #endif
 
@@ -403,6 +488,13 @@ void frame(void) {
             if (nk_button_label(ctx, "Reset"))
                 resetValues = true;
 #if !WEB_BUILD
+            if (nk_button_label(ctx, "Import Settings")) {
+                osdialog_filters *filters = osdialog_filters_parse("JSON:json");
+                char *filename = osdialog_file(OSDIALOG_OPEN, ".", NULL, filters);
+                if (filename)
+                    LoadSettings(filename, &tmp);
+                osdialog_filters_free(filters);
+            }
             if (nk_button_label(ctx, "Export Settings")) {
                 char path[256];
                 time_t raw = time(NULL);
@@ -451,10 +543,17 @@ void frame(void) {
                 }
                 
                 if (nk_button_label(ctx, "Add Biome")) {
-                    AddNewBiome();
+                    AddNewBiome((Vec4){0.f,0.f,0.f,0.f}, 0.f);
                     state.update = true;
                 }
 #if !WEB_BUILD
+                if (nk_button_label(ctx, "Import Biomes")) {
+                    osdialog_filters *filters = osdialog_filters_parse("JSON:json");
+                    char *filename = osdialog_file(OSDIALOG_OPEN, ".", NULL, filters);
+                    if (filename)
+                        LoadBiomes(filename);
+                    osdialog_filters_free(filters);
+                }
                 if (nk_button_label(ctx, "Export Biomes") && state.biomes.head) {
                     char path[256];
                     time_t raw = time(NULL);
@@ -673,12 +772,7 @@ void cleanup(void) {
     DestroyVector(state.scripts);
     dmon_deinit();
 #endif
-    Biome *cursor = state.biomes.head;
-    while (cursor) {
-        Biome *tmp = cursor->next;
-        free(cursor);
-        cursor = tmp;
-    }
+    DestroyBiomes();
     DestroyBitmap(&state.bitmap);
     snk_shutdown();
     sg_shutdown();

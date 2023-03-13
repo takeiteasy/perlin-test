@@ -14,6 +14,7 @@
 #include <stdbool.h>
 #include <sys/types.h>
 #include <sys/stat.h>
+#include <stdio.h>
 #if defined(PLATFORM_WINDOWS)
 #include "dirent_win32.h"
 #include <io.h>
@@ -30,5 +31,6 @@ const char* FileExt(const char *path);
 const char** FindFiles(const char *ext);
 bool DoesFileExist(const char *path);
 bool DoesDirExist(const char *path);
+char* LoadFile(const char *path, size_t *out);
 
 #endif /* filesystem_h */

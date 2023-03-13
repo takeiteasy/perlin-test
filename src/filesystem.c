@@ -55,3 +55,23 @@ bool DoesDirExist(const char *path) {
     struct stat sb;
     return stat(path, &sb) == 0 && S_ISDIR(sb.st_mode);
 }
+
+char* LoadFile(const char *path, size_t *length) {
+    char *result = NULL;
+    size_t sz = -1;
+    FILE *fh = fopen(path, "rb");
+    if (!fh)
+        goto BAIL;
+    fseek(fh, 0, SEEK_END);
+    sz = ftell(fh);
+    fseek(fh, 0, SEEK_SET);
+
+    result = malloc(sz * sizeof(char));
+    fread(result, sz, 1, fh);
+    fclose(fh);
+    
+BAIL:
+    if (length)
+        *length = sz;
+    return result;
+}

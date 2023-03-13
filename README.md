@@ -24,7 +24,7 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
 - [ ] Error handling for assets
 - [ ] Touch controls
 - [X] ~~Biome controls~~
-- [ ] Config file + args
+- [ ] ~~Config files~~ + args
 
 ## Dependencies
 
@@ -53,6 +53,10 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
     - threads.h ([modified](https://gist.github.com/takeiteasy/f04ccebdaed5a9f554b99e7b4456198e))
 - [tsoding/jim](https://github.com/tsoding/jim) (MIT)
     - jim.h
+- [esr/microjson](https://gitlab.com/esr/microjson/) (BSD-2-clause)
+    - mjson.h
+- [AndrewBelt/osdialog](https://github.com/AndrewBelt/osdialog) (CC0)
+    - osdialog.h ([modified](https://gist.github.com/takeiteasy/b8a89676eebcdc074362c0aec8ce5948))
 
 ## License
 ```
