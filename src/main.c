@@ -342,6 +342,25 @@ static void ExportBiomes(const char *path) {
     jim_object_end(&jim);
     fclose(fh);
 }
+
+static void ExportSettings(const char *path) {
+    FILE *fh = fopen(path, "w");
+    Jim jim = {
+        .sink = fh,
+        .write = (Jim_Write)fwrite
+    };
+    jim_object_begin(&jim);
+    jim_member_key(&jim, "perlin");
+    jim_object_begin(&jim);
+#define X(TYPE, NAME, DEFAULT)   \
+    jim_member_key(&jim, #NAME); \
+    jim_float(&jim,  (float)settings.NAME, 2);
+    SETTINGS
+#undef X
+    jim_object_end(&jim);
+    jim_object_end(&jim);
+    fclose(fh);
+}
 #endif
 
 void frame(void) {
@@ -383,6 +402,15 @@ void frame(void) {
             nk_slider_int(ctx, 1, &tmp.octaves, 16, 1);
             if (nk_button_label(ctx, "Reset"))
                 resetValues = true;
+#if !WEB_BUILD
+            if (nk_button_label(ctx, "Export Settings")) {
+                char path[256];
+                time_t raw = time(NULL);
+                struct tm *t = localtime(&raw);
+                strftime(path, 256, "Perlin %G-%m-%d at %H.%M.%S.json", t);
+                ExportSettings(path);
+            }
+#endif
             nk_tree_pop(ctx);
         }
         if (nk_tree_push(ctx, NK_TREE_TAB, "Biomes", NK_MINIMIZED)) {
