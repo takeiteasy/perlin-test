@@ -24,7 +24,7 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
 - [ ] Error handling for assets
 - [ ] Touch controls
 - [X] ~~Biome controls~~
-- [ ] ~~Config files~~ + args
+- [X] ~~Config files + args~~
 
 ## Dependencies
 
@@ -33,6 +33,7 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
     - sokol_app.h
     - sokol_glue.h
     - sokol_nuklear.h
+    - sokol_args.h
 - [Immediate-Mode-UI/Nuklear](https://github.com/Immediate-Mode-UI/Nuklear) (MIT/Public Domain)
     - nuklear.h
 - [miloyip/svpng](https://github.com/miloyip/svpng) (BSD-3-Clause)

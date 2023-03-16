@@ -1213,6 +1213,7 @@ function sapp_js_set_cursor(cursor_type,shown) { if (Module.sapp_emsc_target) { 
 function sapp_js_clear_favicon() { const link = document.getElementById('sokol-app-favicon'); if (link) { document.head.removeChild(link); } }
 function sapp_js_set_favicon(w,h,pixels) { const canvas = document.createElement('canvas'); canvas.width = w; canvas.height = h; const ctx = canvas.getContext('2d'); const img_data = ctx.createImageData(w, h); img_data.data.set(HEAPU8.subarray(pixels, pixels + w*h*4)); ctx.putImageData(img_data, 0, 0); const new_link = document.createElement('link'); new_link.id = 'sokol-app-favicon'; new_link.rel = 'shortcut icon'; new_link.href = canvas.toDataURL(); document.head.appendChild(new_link); }
 function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { return 1; } else { return 0; } }
+function sargs_js_parse_url() { const params = new URLSearchParams(window.location.search).entries(); for (let p = params.next(); !p.done; p = params.next()) { const key = p.value[0]; const val = p.value[1]; withStackSave(() => { const key_cstr = allocateUTF8OnStack(key); const val_cstr = allocateUTF8OnStack(val); __sargs_add_kvp(key_cstr, val_cstr) }); } }
 
 
 
@@ -3480,6 +3481,7 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
 
 
 
+
   
   function _proc_exit(code) {
       EXITSTATUS = code;
@@ -3528,6 +3530,8 @@ function snk_js_is_osx() { if (navigator.userAgent.includes('Macintosh')) { retu
       stringToUTF8Array(str, HEAP8, ret, size);
       return ret;
     }
+
+
 
 
 var GLctx;;
@@ -3686,6 +3690,7 @@ var wasmImports = {
   "sapp_js_set_favicon": sapp_js_set_favicon,
   "sapp_js_unfocus_textfield": sapp_js_unfocus_textfield,
   "sapp_js_write_clipboard": sapp_js_write_clipboard,
+  "sargs_js_parse_url": sargs_js_parse_url,
   "snk_js_is_osx": snk_js_is_osx
 };
 var asm = createWasm();
@@ -3717,6 +3722,8 @@ var __sapp_emsc_end_drop = Module["__sapp_emsc_end_drop"] = createExportWrapper(
 var __sapp_emsc_invoke_fetch_cb = Module["__sapp_emsc_invoke_fetch_cb"] = createExportWrapper("_sapp_emsc_invoke_fetch_cb");
 /** @type {function(...*):?} */
 var _main = Module["_main"] = createExportWrapper("__main_argc_argv");
+/** @type {function(...*):?} */
+var __sargs_add_kvp = Module["__sargs_add_kvp"] = createExportWrapper("_sargs_add_kvp");
 /** @type {function(...*):?} */
 var ___dl_seterr = createExportWrapper("__dl_seterr");
 /** @type {function(...*):?} */
@@ -3754,8 +3761,8 @@ var _emscripten_stack_get_current = function() {
 
 /** @type {function(...*):?} */
 var dynCall_jiji = Module["dynCall_jiji"] = createExportWrapper("dynCall_jiji");
-var ___start_em_js = Module['___start_em_js'] = 137788;
-var ___stop_em_js = Module['___stop_em_js'] = 143716;
+var ___start_em_js = Module['___start_em_js'] = 138336;
+var ___stop_em_js = Module['___stop_em_js'] = 144604;
 
 // include: postamble.js
 // === Auto-generated postamble setup entry stuff ===

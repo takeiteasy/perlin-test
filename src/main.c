@@ -16,8 +16,9 @@
 #include "sokol_app.h"
 #include "sokol_glue.h"
 #include "sokol_nuklear.h"
-#include "default2d.glsl.h"
+#include "sokol_args.h"
 #include "maths.h"
+#include "default2d.glsl.h"
 #include "default3d.glsl.h"
 #if !WEB_BUILD
 #include "filesystem.h"
@@ -36,15 +37,15 @@
 
 #define DEFAULT_CANVAS_SIZE 512
 
-#define SETTINGS \
-    X(int, canvasWidth, DEFAULT_CANVAS_SIZE) \
+#define SETTINGS                              \
+    X(int, canvasWidth, DEFAULT_CANVAS_SIZE)  \
     X(int, canvasHeight, DEFAULT_CANVAS_SIZE) \
-    X(float, xoff, 0.f) \
-    X(float, yoff, 0.f) \
-    X(float, zoff, 0.f) \
-    X(float, scale, 200.f) \
-    X(float, lacunarity, 2.f) \
-    X(float, gain, .5f) \
+    X(float, xoff, 0.f)                       \
+    X(float, yoff, 0.f)                       \
+    X(float, zoff, 0.f)                       \
+    X(float, scale, 200.f)                    \
+    X(float, lacunarity, 2.f)                 \
+    X(float, gain, .5f)                       \
     X(int, octaves, 8)
 typedef struct {
 #define X(TYPE, NAME, DEFAULT) TYPE NAME;
@@ -212,6 +213,12 @@ void init(void) {
     state.pass_action = (sg_pass_action) {
         .colors[0] = { .action=SG_ACTION_CLEAR, .value={.1f, .1f, .1f, 1.f} }
     };
+    
+#define X(TYPE, NAME, DEFAULT) \
+    if (sargs_exists(#NAME)) \
+        settings.NAME = (TYPE)atof(sargs_value(#NAME));
+    SETTINGS
+#undef X
     
     state.texture = NewTexture(settings.canvasWidth, settings.canvasHeight);
     state.bitmap = NewBitmap(settings.canvasWidth, settings.canvasHeight);
@@ -677,6 +684,14 @@ void frame(void) {
                     state.bitmap.buf[i] = RGB(h, h, h);
             }
         
+#if !WEB_BUILD
+        if (state.currentScript != 0) {
+            mtx_lock(&state.luaStateLock);
+            LuaCallPostframe(state.luaState, &state.bitmap);
+            mtx_unlock(&state.luaStateLock);
+        }
+#endif
+        
         sg_update_image(state.texture, &(sg_image_data) {
             .subimage[0][0] = {
                 .ptr  = state.bitmap.buf,
@@ -779,17 +794,26 @@ void cleanup(void) {
 }
 
 sapp_desc sokol_main(int argc, char* argv[]) {
-    (void)argc; (void)argv;
+    sargs_setup(&(sargs_desc){ .argc=argc, .argv=argv });
+#define CHECK_ARG_INT(NAME, DEFAULT) \
+    int NAME = DEFAULT; \
+    if (sargs_exists(#NAME)) { \
+        int tmp = atoi(sargs_value(#NAME)); \
+        if (tmp) \
+            NAME = tmp; \
+    }
+    CHECK_ARG_INT(width, 1280);
+    CHECK_ARG_INT(height, 720);
+    CHECK_ARG_INT(samples, 4);
     return (sapp_desc){
         .init_cb = init,
         .frame_cb = frame,
         .event_cb = event,
         .cleanup_cb = cleanup,
-        .width = 1280,
-        .height = 720,
-        .sample_count = 4,
-        .gl_force_gles2 = true,
+        .width = width,
+        .height = height,
+        .sample_count = samples,
         .window_title = "perlin",
-        .icon.sokol_default = true,
+        .icon.sokol_default = true
     };
 }

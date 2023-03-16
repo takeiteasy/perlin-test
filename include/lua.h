@@ -21,5 +21,6 @@ lua_State* LoadLuaScript(const char *filename);
 
 void LuaCallPreframe(lua_State *L);
 void LuaCallFrame(lua_State *L, unsigned char *heightmap, int w, int h);
+void LuaCallPostframe(lua_State *L, Bitmap *bitmap);
 
 #endif /* llua_h */
