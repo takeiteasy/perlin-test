@@ -62,6 +62,8 @@ static Settings settings = {
 typedef struct {
     Vec4 color;
     float max;
+    char buffer[64];
+    int bufferLength;
     int index;
 } BiomeData;
 
@@ -271,18 +273,22 @@ static void SwapBiomes(Biome *a, Biome *b) {
     memcpy(&b->data, &tmp, sizeof(BiomeData));
 }
 
-static void SortBiomes(void) {
+static bool SortBiomes(void) {
     Biome *cursor = state.biomes.head;
     Biome *tmp = NULL;
+    bool sorted = false;
     while (cursor) {
         tmp = cursor->next;
         while (tmp) {
-            if (cursor->data.max > tmp->data.max)
+            if (cursor->data.max > tmp->data.max) {
                 SwapBiomes(cursor, tmp);
+                sorted = true;
+            }
             tmp = tmp->next;
         }
         cursor = cursor->next;
     }
+    return sorted;
 }
 
 #define MAX_BIOMES 16
@@ -295,8 +301,11 @@ static void AddNewBiome(Vec4 color, float max) {
     result->data = (BiomeData) {
         .color = color,
         .max   = max,
-        .index = ++state.biomes.tally
+        .index = ++state.biomes.tally,
+        .bufferLength = 0
     };
+    memset(&result->data.buffer, 0, 64);
+    memcpy(&result->data.buffer, "0", sizeof(unsigned char));
     result->next  = NULL;
     
     state.biomes.count++;
@@ -534,9 +543,23 @@ void frame(void) {
                         color.b = nk_propertyf(ctx, "#B:", 0, color.b, 1.f, .01f, .005f);
                         color.a = nk_propertyf(ctx, "#A:", 0, color.a, 1.f, .01f, .005f);
                         cursor->data.color = (Vec4){color.r, color.g, color.b, color.a};
-                        cursor->data.max = nk_propertyf(ctx, "#Max:", 0, cursor->data.max, 1.f, .01f, .005f);
+                        
+                        static const float ratio[] = {40, 150};
+                        nk_layout_row(ctx, NK_STATIC, 30, 2, ratio);
+                        nk_label(ctx, "Max:", NK_TEXT_LEFT);
+                        int oldLength = cursor->data.bufferLength;
+                        nk_edit_string(ctx, NK_EDIT_FIELD, cursor->data.buffer, &cursor->data.bufferLength, 64, nk_filter_float);
+                        if (oldLength != cursor->data.bufferLength) {
+                            cursor->data.buffer[cursor->data.bufferLength] = '\0';
+                            cursor->data.max = CLAMP(atof(cursor->data.buffer), 0.f, 1.f);
+                            if (SortBiomes())
+                                nk_combo_close(ctx);
+                            state.update = true;
+                        }
+                        
                         if (!Vec4Eq(lastColor, cursor->data.color) || lastMax != cursor->data.max)
                             state.update = true;
+                        nk_layout_row_dynamic(ctx, 25, 1);
                         if (nk_button_label(ctx, "Remove Biome")) {
                             RemoveBiome(cursor);
                             removed = true;
@@ -664,18 +687,14 @@ void frame(void) {
                 int i = y * settings.canvasWidth + x;
                 unsigned char h = heightmap[i];
                 if (state.enableBiomes && state.biomes.head) {
-                    Biome *cursor = state.biomes.head, *prev = NULL;
+                    Biome *cursor = state.biomes.head;
                     bool found = false;
                     while (cursor) {
                         if (h <= (unsigned char)(cursor->data.max * 255.f)) {
-                            if (prev)
-                                state.bitmap.buf[i] = ColorToRGB(cursor->data.color);
-                            else
-                                state.bitmap.buf[i] = ColorToRGB(state.biomes.head->data.color);
+                            state.bitmap.buf[i] = ColorToRGB(cursor->data.color);
                             found = true;
                             break;
                         }
-                        prev = cursor;
                         cursor = cursor->next;
                     }
                     if (!found)
