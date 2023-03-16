@@ -550,7 +550,7 @@ void frame(void) {
                 }
                 
                 if (nk_button_label(ctx, "Add Biome")) {
-                    AddNewBiome((Vec4){0.f,0.f,0.f,0.f}, 0.f);
+                    AddNewBiome((Vec4){0.f,0.f,0.f,255.f}, 0.f);
                     state.update = true;
                 }
 #if !WEB_BUILD

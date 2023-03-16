@@ -11,16 +11,16 @@ function callback(v, x, y, w, h) -- Called pre-render (when settings have update
 end
 
 function postframe(bitmap) -- Called pre-render and after biome colouring (when settings have updated)
-	local w = heightmap:width()
-	local h = heightmap:height()
+	local w = bitmap:width()
+	local h = bitmap:height()
 	-- NOTE: Despire Lua's array's starting from 1, C's don't so start from 0
 	for x=0, w do
 		for y=0, h do
-			local c = heightmap:pget(x, y) -- Original RGB value (ABGR formatted 32bit integer)
-			local v = heightmap:get(x, y) -- Height value (0-255, 8bit unsigned char)
+			local c = bitmap:pget(x, y) -- Original RGB value (ABGR formatted 32bit integer)
+			local v = bitmap:get(x, y) -- Height value (0-255, 8bit unsigned char)
 			
 			-- Set the pixel color
-			heightmap:pset(x, y, c)
+			bitmap:pset(x, y, c)
 		end
 	end
 end
