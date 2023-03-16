@@ -474,16 +474,15 @@ void frame(void) {
         mtx_unlock(&state.luaStateLock);
     }
 #endif
-    
-    struct nk_context *ctx = snk_new_frame();
-    Settings tmp;
-    memcpy(&tmp, &settings, sizeof(Settings));
    
 #if !WEB_BUILD
     int currentModel = state.currentModel, currentScript = state.currentScript;
 #endif
     bool resetValues = false;
-    if (nk_begin(ctx, "Settings", nk_rect(0, 0, 300, (int)(300.f * PHI)), NK_WINDOW_SCALABLE | NK_WINDOW_BORDER | NK_WINDOW_MINIMIZABLE)) {
+    struct nk_context *ctx = snk_new_frame();
+    Settings tmp;
+    memcpy(&tmp, &settings, sizeof(Settings));
+    if (nk_begin(ctx, "Settings", nk_rect(0, 0, 300, 600), NK_WINDOW_SCALABLE | NK_WINDOW_BORDER | NK_WINDOW_MINIMIZABLE)) {
         if (nk_tree_push(ctx, NK_TREE_TAB, "Size", NK_MINIMIZED)) {
             nk_property_int(ctx, "#Width:", 128, &tmp.canvasWidth, 1024, 16, 1);
             nk_property_int(ctx, "#Height:", 128, &tmp.canvasHeight, 1024, 16, 1);
@@ -521,7 +520,7 @@ void frame(void) {
 #endif
             nk_tree_pop(ctx);
         }
-        if (nk_tree_push(ctx, NK_TREE_TAB, "Biomes", NK_MINIMIZED)) {
+        if (nk_tree_push(ctx, NK_TREE_TAB, "Biomes", NK_MAXIMIZED)) {
             bool lastEnabled = state.enableBiomes;
             nk_checkbox_label(ctx, "Enable biomes", &state.enableBiomes);
             if (state.enableBiomes != lastEnabled)
