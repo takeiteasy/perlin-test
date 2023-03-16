@@ -24,6 +24,7 @@ Alternatively, try the web version [here](https://takeiteasy.github.io/perlin-to
 - [ ] Error handling for assets
 - [ ] Touch controls
 - [X] ~~Biome controls~~
+    - [ ] Rework biome controls
 - [X] ~~Config files + args~~
 
 ## Dependencies
